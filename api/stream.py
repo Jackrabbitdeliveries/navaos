@@ -1,99 +1,51 @@
-from fastapi import APIRouter
+from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse, HTMLResponse
-import subprocess
-import os
-import signal
-import time
-import threading
+from pydantic import BaseModel
 
-router = APIRouter(prefix="/radio", tags=["radio-stream"])
+from navaos_audio.channel_manager import channel_manager, SessionConflictError
 
+router = APIRouter(prefix="/radio", tags=["radio"])
+
+# Display metadata for the player page. Frequencies/keys themselves live in
+# navaos_audio.channel_manager (the single source of truth for the hardware
+# layer) - this is presentation only.
 CHANNELS = {
-    "09": {"freq": "156.450M", "mhz": "156.450 MHz", "name": "Channel 09 - Bridge of Lions"},
-    "13": {"freq": "156.650M", "mhz": "156.650 MHz", "name": "Channel 13 - Bridge-to-Bridge"},
-    "16": {"freq": "156.800M", "mhz": "156.800 MHz", "name": "Channel 16 - Distress / Calling"},
-    "68": {"freq": "156.425M", "mhz": "156.425 MHz", "name": "Channel 68"},
-    "71": {"freq": "156.575M", "mhz": "156.575 MHz", "name": "Channel 71"},
-    "wx": {"freq": "162.425M", "mhz": "162.425 MHz", "name": "NOAA Weather WX4"},
+    "09": {"mhz": "156.450 MHz", "name": "Channel 09 - Bridge of Lions"},
+    "13": {"mhz": "156.650 MHz", "name": "Channel 13 - Bridge-to-Bridge"},
+    "16": {"mhz": "156.800 MHz", "name": "Channel 16 - Distress / Calling"},
+    "68": {"mhz": "156.425 MHz", "name": "Channel 68"},
+    "71": {"mhz": "156.575 MHz", "name": "Channel 71"},
+    "wx": {"mhz": "162.425 MHz", "name": "NOAA Weather WX4"},
 }
 
-active_proc = None
-proc_lock = threading.Lock()
 
-
-def stop_active_stream():
-    global active_proc
-
-    with proc_lock:
-        proc = active_proc
-        active_proc = None
-
-    if proc and proc.poll() is None:
-        try:
-            os.killpg(os.getpgid(proc.pid), signal.SIGTERM)
-            proc.wait(timeout=2)
-        except Exception:
-            try:
-                os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
-            except Exception:
-                pass
-
-    time.sleep(0.6)
-
+# ---- direct tune ------------------------------------------------------
 
 @router.get("/stream/{channel}.mp3")
 def stream_channel(channel: str):
-    global active_proc
-
     channel_key = channel.lower()
-    selected = CHANNELS.get(channel_key, CHANNELS["09"])
-    freq = selected["freq"]
-    # NOAA is continuous, so leave squelch open.
-    # Marine channels use an empirical rtl_fm squelch threshold.
-    squelch = 0 if channel_key == "wx" else 40
+    try:
+        channel_manager.get_config(channel_key)
+    except KeyError:
+        raise HTTPException(404, f"Unknown channel: {channel}")
 
-    stop_active_stream()
+    try:
+        # Subscribe eagerly, outside the generator, so a session conflict
+        # raises here and returns a clean 409 - rather than only surfacing
+        # once StreamingResponse starts iterating.
+        q = channel_manager.subscribe_direct(channel_key)
+    except SessionConflictError as e:
+        raise HTTPException(409, str(e))
 
-    cmd = (
-      f"rtl_fm -f {freq} -M fm -s 48000 -g 49.6 -l {squelch} -E deemp "
-       "| ffmpeg -hide_banner -loglevel error "
-       "-f s16le -ar 48000 -ac 1 -i pipe:0 "
-       '-af "highpass=f=250,lowpass=f=3200,afftdn=nr=10:nf=-45:tn=1,acompressor=threshold=-24dB:ratio=3:attack=20:release=250:makeup=4,volume=10dB" '
-       "-acodec libmp3lame -b:a 64k -f mp3 pipe:1"  
-    )
-
-    proc = subprocess.Popen(
-        cmd,
-        shell=True,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        bufsize=0,
-        preexec_fn=os.setsid,
-    )
-    with proc_lock:
-        active_proc = proc
-
-    def audio_generator():
-        global active_proc
+    def gen():
         try:
             while True:
-                chunk = proc.stdout.read(4096)
-                if not chunk:
-                    break
-                yield chunk
+                yield q.get()
         finally:
-            with proc_lock:
-                if active_proc == proc:
-                    active_proc = None
-
-            if proc.poll() is None:
-                try:
-                    os.killpg(os.getpgid(proc.pid), signal.SIGTERM)
-                except Exception:
-                    pass
+            channel_manager.unsubscribe_direct(channel_key, q)
 
     return StreamingResponse(
-        audio_generator(),
+        gen(),
         media_type="audio/mpeg",
         headers={
             "Cache-Control": "no-store",
@@ -105,9 +57,86 @@ def stream_channel(channel: str):
 
 @router.get("/stop")
 def stop_radio_stream():
-    stop_active_stream()
+    channel_manager.stop_direct()
     return {"ok": True, "status": "stopped"}
 
+
+# ---- scanning -----------------------------------------------------------
+
+class ScanStartRequest(BaseModel):
+    channels: list[str] | None = None  # None = use default scan order
+
+
+@router.post("/scan/start")
+def start_scan(req: ScanStartRequest = ScanStartRequest()):
+    try:
+        channel_manager.start_scan(req.channels)
+    except SessionConflictError as e:
+        raise HTTPException(409, str(e))
+    return channel_manager.status()
+
+
+@router.get("/scan/stream.mp3")
+def scan_stream():
+    """Subscribe to the scanner's audio output. Call /radio/scan/start first."""
+    if channel_manager.status().get("mode") != "scan":
+        raise HTTPException(409, "Scan is not currently running. POST /radio/scan/start first.")
+
+    q = channel_manager.start_scan()
+
+    def gen():
+        try:
+            while True:
+                yield q.get()
+        finally:
+            channel_manager.unsubscribe_scan(q)
+
+    return StreamingResponse(gen(), media_type="audio/mpeg")
+
+
+@router.post("/scan/resume")
+def resume_scan():
+    """Unlock from whatever channel the scanner is currently parked on."""
+    channel_manager.resume_scan()
+    return channel_manager.status()
+
+
+@router.post("/scan/stop")
+def stop_scan():
+    channel_manager.stop_scan()
+    return channel_manager.status()
+
+
+# ---- shared status / tuning -----------------------------------------------
+
+@router.get("/status")
+def status():
+    return channel_manager.status()
+
+
+class ChannelParams(BaseModel):
+    """All fields optional - only supplied fields are updated (PATCH semantics)."""
+    squelch_enabled: bool | None = None
+    vad_aggressiveness: int | None = None
+    open_threshold_db: float | None = None
+    close_threshold_db: float | None = None
+    hang_time_s: float | None = None
+    agc_enabled: bool | None = None
+    volume: float | None = None
+    rf_gain: float | None = None
+
+
+@router.patch("/{channel}/params")
+def update_params(channel: str, params: ChannelParams):
+    changes = {k: v for k, v in params.model_dump().items() if v is not None}
+    try:
+        cfg = channel_manager.update_config(channel.lower(), **changes)
+    except KeyError:
+        raise HTTPException(404, f"Unknown channel: {channel}")
+    return cfg.__dict__
+
+
+# ---- player page ------------------------------------------------------
 
 @router.get("/player")
 def player():
