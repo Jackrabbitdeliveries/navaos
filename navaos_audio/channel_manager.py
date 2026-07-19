@@ -34,7 +34,7 @@ CHANNEL_FREQUENCIES_HZ = {
     "16": 156.800e6,
     "68": 156.425e6,
     "71": 156.575e6,
-    "wx4": 162.425e6,
+    "wx": 162.425e6,
 }
 
 # WX4 (continuous weather broadcast) is excluded from the default scan --
@@ -87,6 +87,16 @@ class ChannelManager:
                 return
             self._direct_pipeline.unsubscribe(q)
             if self._direct_pipeline.subscriber_count == 0:
+                self._teardown_direct_locked()
+
+    def stop_direct(self) -> None:
+        """Force-tear-down the current direct-tune session, if any.
+
+        Used by an explicit user-facing "stop" action, as opposed to the
+        automatic teardown that happens when the last subscriber leaves.
+        """
+        with self._lock:
+            if self._active_kind == "direct":
                 self._teardown_direct_locked()
 
     def _teardown_direct_locked(self) -> None:

@@ -66,7 +66,13 @@ class ScanController:
             self._thread.start()
 
     def stop(self) -> None:
+        """Blocks until the scan thread's `finally` block has actually
+        stopped the rtl_fm/ffmpeg subprocesses, so the caller can safely
+        start a new session against the same dongle the instant this
+        returns."""
         self._stop_event.set()
+        if self._thread is not None:
+            self._thread.join(timeout=8)
 
     def resume(self) -> None:
         """Unlock from the current channel and continue cycling.

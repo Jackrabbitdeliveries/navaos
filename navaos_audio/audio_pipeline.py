@@ -67,11 +67,16 @@ class AudioPipeline:
         """Immediately tear this pipeline down regardless of subscriber count.
 
         Used when a different session (another channel, or a scan) needs
-        exclusive access to the single RTL-SDR dongle.
+        exclusive access to the single RTL-SDR dongle. Blocks until the
+        background thread's `finally` block has actually stopped the
+        rtl_fm/ffmpeg subprocesses, so the caller can safely start a new
+        session against the same dongle the instant this returns.
         """
         self._stop_event.set()
         with self._subscribers_lock:
             self._subscribers.clear()
+        if self._thread is not None:
+            self._thread.join(timeout=8)
 
     def _broadcast(self, chunk: bytes) -> None:
         with self._subscribers_lock:
