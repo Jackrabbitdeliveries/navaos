@@ -212,6 +212,31 @@ def player():
       cursor: pointer;
     }}
 
+    #scanControls {{
+      margin-top: 16px;
+      padding-top: 16px;
+      border-top: 1px dashed #999;
+    }}
+
+    .scan-button {{
+      font-size: 20px;
+      margin: 6px;
+      padding: 8px 14px;
+      border: 2px solid #2a6fb0;
+      border-radius: 6px;
+      background: #eaf2fb;
+      cursor: pointer;
+    }}
+
+    .scan-button:hover:not(:disabled) {{
+      background: #d9e9fa;
+    }}
+
+    .scan-button:disabled {{
+      opacity: 0.5;
+      cursor: not-allowed;
+    }}
+
     audio {{
       margin-top: 14px;
       width: 380px;
@@ -231,6 +256,12 @@ def player():
   <br>
   <button id="stopButton" onclick="stopRadio()">Stop</button>
 
+  <div id="scanControls">
+    <button id="btn-start-scan" class="scan-button" onclick="startScan()">Start Scan</button>
+    <button id="btn-resume-scan" class="scan-button" onclick="resumeScan()" disabled>Resume Scan</button>
+    <button id="btn-stop-scan" class="scan-button" onclick="stopScan()">Stop Scan</button>
+  </div>
+
   <hr>
   <audio id="radio" controls preload="none"></audio>
 
@@ -239,7 +270,12 @@ def player():
     const status = document.getElementById("status");
     const frequency = document.getElementById("frequency");
 
+    const scanStartBtn = document.getElementById("btn-start-scan");
+    const scanResumeBtn = document.getElementById("btn-resume-scan");
+
     const channels = {CHANNELS};
+
+    let scanPollTimer = null;
 
     function clearActiveButtons() {{
       document.querySelectorAll(".channel-button").forEach(btn => {{
@@ -257,6 +293,18 @@ def player():
 
     async function playRadio(channel) {{
       const info = channels[channel];
+
+      try {{
+        const check = await fetch("/radio/status?x=" + Date.now());
+        const checkData = await check.json();
+        if (checkData.mode === "scan") {{
+          status.innerText = "Status: Error - A scan is currently active. Stop the scan before tuning directly.";
+          return;
+        }}
+      }} catch (err) {{
+        // if the status check itself fails, fall through and let the
+        // normal flow (and the 409 from the server, if any) surface it
+      }}
 
       status.innerText = "Status: Stopping old stream...";
       frequency.innerText = "Frequency: —";
@@ -299,10 +347,137 @@ def player():
       clearActiveButtons();
     }}
 
+    function startScanPolling() {{
+      if (scanPollTimer) return;
+      scanPollTimer = setInterval(pollScanStatus, 1500);
+      pollScanStatus();
+    }}
+
+    function stopScanPolling() {{
+      if (scanPollTimer) {{
+        clearInterval(scanPollTimer);
+        scanPollTimer = null;
+      }}
+      scanResumeBtn.disabled = true;
+    }}
+
+    async function pollScanStatus() {{
+      try {{
+        const res = await fetch("/radio/status?x=" + Date.now());
+        const data = await res.json();
+
+        if (data.mode !== "scan") {{
+          stopScanPolling();
+          return;
+        }}
+
+        const info = channels[data.current_channel];
+        const label = info ? info.name : (data.current_channel || "—");
+
+        clearActiveButtons();
+
+        if (data.locked) {{
+          status.innerText = "Status: Locked on " + label;
+          scanResumeBtn.disabled = false;
+        }} else {{
+          status.innerText = "Status: Scanning... (" + label + ")";
+          scanResumeBtn.disabled = true;
+        }}
+        frequency.innerText = info ? "Frequency: " + info.mhz : "Frequency: —";
+      }} catch (err) {{
+        // transient poll failure; leave the last-known status displayed
+      }}
+    }}
+
+    async function startScan() {{
+      clearActiveButtons();
+      status.innerText = "Status: Starting scan...";
+      frequency.innerText = "Frequency: —";
+
+      let res;
+      try {{
+        res = await fetch("/radio/scan/start", {{ method: "POST" }});
+      }} catch (err) {{
+        status.innerText = "Status: Error - " + err;
+        return;
+      }}
+
+      if (res.status === 409) {{
+        const err = await res.json();
+        status.innerText = "Status: Error - " + (err.detail || "A direct tune is currently active.");
+        return;
+      }}
+
+      if (!res.ok) {{
+        status.innerText = "Status: Error - could not start scan.";
+        return;
+      }}
+
+      audio.src = "/radio/scan/stream.mp3?t=" + Date.now();
+      audio.volume = 1.0;
+      audio.load();
+
+      try {{
+        await audio.play();
+      }} catch (err) {{
+        status.innerText = "Status: Error - " + err;
+        return;
+      }}
+
+      startScanPolling();
+    }}
+
+    async function resumeScan() {{
+      try {{
+        const res = await fetch("/radio/scan/resume", {{ method: "POST" }});
+        if (!res.ok) {{
+          status.innerText = "Status: Error - could not resume scan.";
+        }}
+      }} catch (err) {{
+        status.innerText = "Status: Error - " + err;
+      }}
+    }}
+
+    async function stopScan() {{
+      stopScanPolling();
+
+      audio.pause();
+      audio.removeAttribute("src");
+      audio.load();
+
+      await fetch("/radio/scan/stop", {{ method: "POST" }});
+
+      status.innerText = "Status: Stopped";
+      frequency.innerText = "Frequency: —";
+      clearActiveButtons();
+    }}
+
     audio.onerror = function() {{
       status.innerText = "Status: Audio error. Press Stop, wait 2 seconds, then select a channel.";
       clearActiveButtons();
     }};
+
+    // Sync UI with whatever session is already active (e.g. page reload
+    // during a scan or a direct tune started from another tab).
+    (async function initStatus() {{
+      try {{
+        const res = await fetch("/radio/status?x=" + Date.now());
+        const data = await res.json();
+
+        if (data.mode === "scan") {{
+          startScanPolling();
+        }} else if (data.mode === "direct") {{
+          const info = channels[data.channel];
+          if (info) {{
+            status.innerText = "Status: Listening on " + info.name;
+            frequency.innerText = "Frequency: " + info.mhz;
+            setActiveChannel(data.channel);
+          }}
+        }}
+      }} catch (err) {{
+        // leave default "Idle" status if this check fails
+      }}
+    }})();
   </script>
 </body>
 </html>
