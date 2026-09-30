@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import queue
 import threading
+from typing import Callable, Optional
 
 import numpy as np
 
@@ -35,6 +36,11 @@ class AudioPipeline:
         self._subscribers_lock = threading.Lock()
         self._thread: "threading.Thread | None" = None
         self._stop_event = threading.Event()
+
+        # Set by the owner (ChannelManager) to learn when this pipeline dies
+        # on its own (rtl_fm failed/exited) rather than via an explicit
+        # force_stop() - so "active" bookkeeping doesn't stay stale forever.
+        self.on_unexpected_stop: Optional[Callable[[], None]] = None
 
     def subscribe(self) -> "queue.Queue[bytes]":
         q: "queue.Queue[bytes]" = queue.Queue(maxsize=64)
@@ -73,10 +79,25 @@ class AudioPipeline:
         session against the same dongle the instant this returns.
         """
         self._stop_event.set()
-        with self._subscribers_lock:
-            self._subscribers.clear()
+        self._notify_subscribers_ended()
         if self._thread is not None:
             self._thread.join(timeout=8)
+
+    def _notify_subscribers_ended(self) -> None:
+        """Wake any subscriber blocked on q.get() with a sentinel so its
+        HTTP response can end, then drop them - this pipeline is done
+        either way, whether by explicit stop or an unexpected exit."""
+        with self._subscribers_lock:
+            for q in self._subscribers:
+                try:
+                    q.put_nowait(None)
+                except queue.Full:
+                    try:
+                        q.get_nowait()
+                        q.put_nowait(None)
+                    except queue.Empty:
+                        pass
+            self._subscribers.clear()
 
     def _broadcast(self, chunk: bytes) -> None:
         with self._subscribers_lock:
@@ -113,6 +134,7 @@ class AudioPipeline:
         output_thread = threading.Thread(target=pump_encoder_output, daemon=True)
         output_thread.start()
 
+        unexpected_exit = False
         try:
             for pcm_chunk in receiver.read_frames(frame_bytes):
                 if self._stop_event.is_set():
@@ -127,7 +149,21 @@ class AudioPipeline:
                 frame = np.frombuffer(pcm_chunk, dtype=np.int16)
                 gated = squelch.process(frame, cfg.sample_rate)
                 encoder.write(gated.tobytes())
+            else:
+                # The loop ran out on its own (rtl_fm exited/EOF) rather than
+                # via the `break` above - that's not a deliberate stop.
+                unexpected_exit = not self._stop_event.is_set()
         finally:
             receiver.stop()
             encoder.stop()
             output_thread.join(timeout=2)
+
+        if unexpected_exit:
+            print(
+                f"AUDIOPIPELINE-FAILURE ch={cfg.channel} "
+                f"rtl_fm_stderr_tail={receiver.stderr_tail}",
+                flush=True,
+            )
+            self._notify_subscribers_ended()
+            if self.on_unexpected_stop is not None:
+                self.on_unexpected_stop()

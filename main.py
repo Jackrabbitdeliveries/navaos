@@ -1,8 +1,18 @@
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
 from datetime import datetime
 from api.stream import router as stream_router
+from navaos_audio.channel_manager import channel_manager
 
-app = FastAPI(title="NavaOS API", version="0.1.0")
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    yield
+    channel_manager.shutdown()
+
+
+app = FastAPI(title="NavaOS API", version="0.1.0", lifespan=lifespan)
 
 app.include_router(stream_router)
 

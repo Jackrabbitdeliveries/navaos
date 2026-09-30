@@ -25,7 +25,7 @@ import threading
 from typing import Optional
 
 from .audio_pipeline import AudioPipeline
-from .config import ChannelConfig, ConfigStore
+from .config import ChannelConfig, ConfigStore, ScanSettings
 from .scan_controller import ScanController
 
 CHANNEL_FREQUENCIES_HZ = {
@@ -61,6 +61,14 @@ class ChannelManager:
         self._active_channel: Optional[str] = None    # set when kind == "direct"
         self._direct_pipeline: Optional[AudioPipeline] = None
         self._scan_controller: Optional[ScanController] = None
+        self._scan_settings: ConfigStore[ScanSettings] = ConfigStore(ScanSettings())
+
+        # Persistent scan memory - which channels are currently included in
+        # scanning. In-memory only for now: resets to the default 5 on
+        # restart. Kept in canonical (CHANNEL_FREQUENCIES_HZ) order, not
+        # insertion order, so cycling behavior is predictable regardless of
+        # what order channels were added/removed in.
+        self._scan_channels: list[str] = list(DEFAULT_SCAN_ORDER)
 
     # ---- direct tune ------------------------------------------------------
 
@@ -76,10 +84,24 @@ class ChannelManager:
             if self._active_kind == "direct" and self._active_channel != channel:
                 self._teardown_direct_locked()
             if self._direct_pipeline is None:
-                self._direct_pipeline = AudioPipeline(self._stores[channel], self._device_index)
+                pipeline = AudioPipeline(self._stores[channel], self._device_index)
+                pipeline.on_unexpected_stop = lambda: self._on_direct_pipeline_died(pipeline)
+                self._direct_pipeline = pipeline
                 self._active_kind = "direct"
                 self._active_channel = channel
             return self._direct_pipeline.subscribe()
+
+    def _on_direct_pipeline_died(self, pipeline: AudioPipeline) -> None:
+        """Called (from the pipeline's own background thread) when rtl_fm
+        exits/fails on its own, rather than via an explicit stop. Only acts
+        if `pipeline` is still the one we think is active - a fast channel
+        switch may have already replaced it by the time this runs."""
+        with self._lock:
+            if self._direct_pipeline is pipeline:
+                self._direct_pipeline = None
+                if self._active_kind == "direct":
+                    self._active_kind = None
+                    self._active_channel = None
 
     def unsubscribe_direct(self, channel: str, q: "queue.Queue[bytes]") -> None:
         with self._lock:
@@ -107,21 +129,60 @@ class ChannelManager:
             self._active_kind = None
             self._active_channel = None
 
+    # ---- scan channel list (scan memory) -------------------------------------
+
+    def get_scan_channels(self) -> list[str]:
+        with self._lock:
+            return list(self._scan_channels)
+
+    def add_scan_channel(self, channel: str) -> list[str]:
+        if channel not in self._stores:
+            raise KeyError(f"Unknown channel: {channel}")
+        with self._lock:
+            if channel not in self._scan_channels:
+                self._scan_channels = [
+                    ch for ch in CHANNEL_FREQUENCIES_HZ
+                    if ch in self._scan_channels or ch == channel
+                ]
+            return list(self._scan_channels)
+
+    def remove_scan_channel(self, channel: str) -> list[str]:
+        if channel not in self._stores:
+            raise KeyError(f"Unknown channel: {channel}")
+        with self._lock:
+            self._scan_channels = [ch for ch in self._scan_channels if ch != channel]
+            return list(self._scan_channels)
+
     # ---- scanning -----------------------------------------------------------
 
-    def start_scan(self, channel_order: Optional[list] = None) -> "queue.Queue[bytes]":
+    def start_scan(self) -> "queue.Queue[bytes]":
         with self._lock:
             if self._active_kind == "direct":
                 raise SessionConflictError(
                     "A direct tune is currently active. Stop it before starting a scan."
                 )
             if self._scan_controller is None:
-                order = channel_order or DEFAULT_SCAN_ORDER
+                order = list(self._scan_channels)
+                if not order:
+                    raise ValueError(
+                        "Scan list is empty - add at least one channel before starting a scan."
+                    )
                 stores = {ch: self._stores[ch] for ch in order}
-                self._scan_controller = ScanController(stores, self._device_index)
-                self._scan_controller.start()
+                controller = ScanController(stores, self._scan_settings, self._device_index)
+                controller.on_unexpected_stop = lambda: self._on_scan_died(controller)
+                controller.start()
+                self._scan_controller = controller
                 self._active_kind = "scan"
             return self._scan_controller.subscribe()
+
+    def _on_scan_died(self, controller: ScanController) -> None:
+        """Called when the scan thread gives up on its own (e.g. repeated
+        rtl_fm failures), rather than via an explicit stop_scan()."""
+        with self._lock:
+            if self._scan_controller is controller:
+                self._scan_controller = None
+                if self._active_kind == "scan":
+                    self._active_kind = None
 
     def stop_scan(self) -> None:
         with self._lock:
@@ -153,13 +214,36 @@ class ChannelManager:
             raise KeyError(f"Unknown channel: {channel}")
         return self._stores[channel].update(**changes)
 
+    def get_scan_settings(self) -> ScanSettings:
+        return self._scan_settings.get()
+
+    def update_scan_settings(self, **changes) -> ScanSettings:
+        """Live-update scan timing (dwell_seconds/lock_sustain_s/
+        auto_unlock_quiet_s). Takes effect on the next frame of a running
+        scan - no restart needed."""
+        return self._scan_settings.update(**changes)
+
     def status(self) -> dict:
         with self._lock:
             if self._active_kind == "direct":
-                return {"mode": "direct", "channel": self._active_channel}
-            if self._active_kind == "scan" and self._scan_controller is not None:
-                return self._scan_controller.status()
-            return {"mode": "idle"}
+                result = {"mode": "direct", "channel": self._active_channel}
+            elif self._active_kind == "scan" and self._scan_controller is not None:
+                result = self._scan_controller.status()
+            else:
+                result = {"mode": "idle"}
+        result["scan_settings"] = self._scan_settings.get().__dict__
+        return result
+
+    def shutdown(self) -> None:
+        """Tear down any active session. Called on app shutdown so rtl_fm/
+        ffmpeg don't outlive the process and any open stream finishes
+        cleanly instead of hanging uvicorn's graceful-shutdown wait."""
+        with self._lock:
+            self._teardown_direct_locked()
+            if self._scan_controller is not None:
+                self._scan_controller.stop()
+                self._scan_controller = None
+            self._active_kind = None
 
 
 # Singleton used by the FastAPI app.

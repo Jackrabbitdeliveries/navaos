@@ -40,7 +40,10 @@ def stream_channel(channel: str):
     def gen():
         try:
             while True:
-                yield q.get()
+                chunk = q.get()
+                if chunk is None:
+                    break
+                yield chunk
         finally:
             channel_manager.unsubscribe_direct(channel_key, q)
 
@@ -63,16 +66,17 @@ def stop_radio_stream():
 
 # ---- scanning -----------------------------------------------------------
 
-class ScanStartRequest(BaseModel):
-    channels: list[str] | None = None  # None = use default scan order
-
-
 @router.post("/scan/start")
-def start_scan(req: ScanStartRequest = ScanStartRequest()):
+def start_scan():
+    """Scans whatever channels are currently in the scan list - see
+    GET/POST /radio/scan/channels to manage that list. No per-request
+    channel selection; the list itself is the persistent state."""
     try:
-        channel_manager.start_scan(req.channels)
+        channel_manager.start_scan()
     except SessionConflictError as e:
         raise HTTPException(409, str(e))
+    except ValueError as e:
+        raise HTTPException(400, str(e))
     return channel_manager.status()
 
 
@@ -82,12 +86,18 @@ def scan_stream():
     if channel_manager.status().get("mode") != "scan":
         raise HTTPException(409, "Scan is not currently running. POST /radio/scan/start first.")
 
-    q = channel_manager.start_scan()
+    try:
+        q = channel_manager.start_scan()
+    except ValueError as e:
+        raise HTTPException(400, str(e))
 
     def gen():
         try:
             while True:
-                yield q.get()
+                chunk = q.get()
+                if chunk is None:
+                    break
+                yield chunk
         finally:
             channel_manager.unsubscribe_scan(q)
 
@@ -105,6 +115,51 @@ def resume_scan():
 def stop_scan():
     channel_manager.stop_scan()
     return channel_manager.status()
+
+
+# ---- scan channel list (scan memory) ---------------------------------------
+
+class ScanChannelRequest(BaseModel):
+    channel: str
+
+
+@router.get("/scan/channels")
+def get_scan_channels():
+    return {"channels": channel_manager.get_scan_channels()}
+
+
+@router.post("/scan/channels/add")
+def add_scan_channel(req: ScanChannelRequest):
+    try:
+        channels = channel_manager.add_scan_channel(req.channel.lower())
+    except KeyError:
+        raise HTTPException(404, f"Unknown channel: {req.channel}")
+    return {"channels": channels}
+
+
+@router.post("/scan/channels/remove")
+def remove_scan_channel(req: ScanChannelRequest):
+    try:
+        channels = channel_manager.remove_scan_channel(req.channel.lower())
+    except KeyError:
+        raise HTTPException(404, f"Unknown channel: {req.channel}")
+    return {"channels": channels}
+
+
+class ScanParams(BaseModel):
+    """All fields optional - only supplied fields are updated (PATCH semantics).
+    Scan-wide, unlike /{channel}/params - applies regardless of which channel
+    the scan is currently visiting, and takes effect live on a running scan."""
+    dwell_seconds: float | None = None
+    lock_sustain_s: float | None = None
+    auto_unlock_quiet_s: float | None = None
+
+
+@router.patch("/scan/params")
+def update_scan_params(params: ScanParams):
+    changes = {k: v for k, v in params.model_dump().items() if v is not None}
+    settings = channel_manager.update_scan_settings(**changes)
+    return settings.__dict__
 
 
 # ---- shared status / tuning -----------------------------------------------
@@ -126,6 +181,15 @@ class ChannelParams(BaseModel):
     rf_gain: float | None = None
 
 
+@router.get("/{channel}/params")
+def get_params(channel: str):
+    try:
+        cfg = channel_manager.get_config(channel.lower())
+    except KeyError:
+        raise HTTPException(404, f"Unknown channel: {channel}")
+    return cfg.__dict__
+
+
 @router.patch("/{channel}/params")
 def update_params(channel: str, params: ChannelParams):
     changes = {k: v for k, v in params.model_dump().items() if v is not None}
@@ -141,7 +205,19 @@ def update_params(channel: str, params: ChannelParams):
 @router.get("/player")
 def player():
     buttons = "".join(
-        f'<button id="btn-{key}" class="channel-button" onclick="playRadio(\'{key}\')">{val["name"]}</button><br>'
+        f'<div class="channel-row">'
+        f'<input type="checkbox" class="scan-checkbox" data-channel="{key}" '
+        f'onchange="toggleScanChannel(\'{key}\', this.checked)" title="Include in scan">'
+        f'<button id="btn-{key}" class="channel-button" onclick="playRadio(\'{key}\')">{val["name"]}</button>'
+        f'<button type="button" class="settings-toggle" onclick="toggleSettings(\'{key}\')" '
+        f'title="Squelch sensitivity settings">⚙</button>'
+        f'</div>'
+        f'<div class="settings-panel" id="settings-{key}">'
+        f'<div class="slider-labels"><span>Sensitive</span><span>Strict</span></div>'
+        f'<input type="range" min="0" max="100" value="50" class="sensitivity-slider" '
+        f'data-channel="{key}" oninput="onSensitivityInput(\'{key}\', this.value)">'
+        f'<div class="sensitivity-readout">Sensitivity: <span id="sens-label-{key}">—</span></div>'
+        f'</div>'
         for key, val in CHANNELS.items()
     )
 
@@ -178,9 +254,22 @@ def player():
       color: #444;
     }}
 
+    .channel-row {{
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }}
+
+    .scan-checkbox {{
+      width: 20px;
+      height: 20px;
+      cursor: pointer;
+      flex-shrink: 0;
+    }}
+
     .channel-button {{
       font-size: 22px;
-      margin: 6px;
+      margin: 6px 6px 6px 0;
       padding: 8px 14px;
       border: 2px solid #888;
       border-radius: 6px;
@@ -202,6 +291,52 @@ def player():
 
     .channel-button.active:hover {{
       background: #d7ffd7;
+    }}
+
+    .settings-toggle {{
+      font-size: 18px;
+      padding: 6px 10px;
+      border: 1px solid #999;
+      border-radius: 6px;
+      background: #f0f0f0;
+      cursor: pointer;
+      flex-shrink: 0;
+    }}
+
+    .settings-toggle:hover {{
+      background: #e0e0e0;
+    }}
+
+    .settings-panel {{
+      display: none;
+      margin: 0 0 10px 34px;
+      padding: 10px 14px;
+      border: 1px solid #ccc;
+      border-radius: 6px;
+      background: white;
+      max-width: 340px;
+    }}
+
+    .settings-panel.open {{
+      display: block;
+    }}
+
+    .slider-labels {{
+      display: flex;
+      justify-content: space-between;
+      font-size: 13px;
+      color: #666;
+      margin-bottom: 2px;
+    }}
+
+    .sensitivity-slider {{
+      width: 100%;
+    }}
+
+    .sensitivity-readout {{
+      font-size: 13px;
+      color: #444;
+      margin-top: 4px;
     }}
 
     #stopButton {{
@@ -452,6 +587,108 @@ def player():
       clearActiveButtons();
     }}
 
+    async function toggleScanChannel(channel, included) {{
+      const endpoint = included ? "/radio/scan/channels/add" : "/radio/scan/channels/remove";
+      try {{
+        await fetch(endpoint, {{
+          method: "POST",
+          headers: {{ "Content-Type": "application/json" }},
+          body: JSON.stringify({{ channel: channel }}),
+        }});
+      }} catch (err) {{
+        // leave the checkbox as the user set it; next scan start will just
+        // reflect whatever the server actually has
+      }}
+    }}
+
+    async function loadScanChannels() {{
+      try {{
+        const res = await fetch("/radio/scan/channels?x=" + Date.now());
+        const data = await res.json();
+        const included = new Set(data.channels || []);
+        document.querySelectorAll(".scan-checkbox").forEach(chk => {{
+          chk.checked = included.has(chk.dataset.channel);
+        }});
+      }} catch (err) {{
+        // leave checkboxes unchecked if this fails; reload the page to retry
+      }}
+    }}
+
+    // ---- per-channel squelch sensitivity -----------------------------------
+    // Single slider (0=most sensitive, 100=least sensitive) mapped onto
+    // vad_aggressiveness (discrete 0-3) and open_threshold_db (continuous
+    // 3-15dB); close_threshold_db is derived as open_threshold_db - 3dB to
+    // preserve a fixed hysteresis gap rather than exposing it separately.
+    const SENSITIVITY_MIN_DB = 3.0;
+    const SENSITIVITY_MAX_DB = 15.0;
+    const CLOSE_THRESHOLD_OFFSET_DB = 3.0;
+    const sensitivityDebounceTimers = {{}};
+
+    function toggleSettings(channel) {{
+      const panel = document.getElementById("settings-" + channel);
+      if (panel) {{
+        panel.classList.toggle("open");
+      }}
+    }}
+
+    function sliderToParams(value) {{
+      const v = Number(value);
+      const vad_aggressiveness = Math.min(3, Math.floor(v / 25));
+      const open_threshold_db = SENSITIVITY_MIN_DB + (v / 100) * (SENSITIVITY_MAX_DB - SENSITIVITY_MIN_DB);
+      const close_threshold_db = open_threshold_db - CLOSE_THRESHOLD_OFFSET_DB;
+      return {{ vad_aggressiveness, open_threshold_db, close_threshold_db }};
+    }}
+
+    function openThresholdToSlider(open_threshold_db) {{
+      const clamped = Math.max(SENSITIVITY_MIN_DB, Math.min(SENSITIVITY_MAX_DB, open_threshold_db));
+      return Math.round((clamped - SENSITIVITY_MIN_DB) / (SENSITIVITY_MAX_DB - SENSITIVITY_MIN_DB) * 100);
+    }}
+
+    function updateSensitivityLabel(channel, value) {{
+      const label = document.getElementById("sens-label-" + channel);
+      if (label) {{
+        label.innerText = value + "%";
+      }}
+    }}
+
+    function onSensitivityInput(channel, value) {{
+      updateSensitivityLabel(channel, value);
+      clearTimeout(sensitivityDebounceTimers[channel]);
+      sensitivityDebounceTimers[channel] = setTimeout(() => {{
+        sendSensitivityUpdate(channel, value);
+      }}, 300);
+    }}
+
+    async function sendSensitivityUpdate(channel, value) {{
+      const params = sliderToParams(value);
+      try {{
+        await fetch("/radio/" + channel + "/params", {{
+          method: "PATCH",
+          headers: {{ "Content-Type": "application/json" }},
+          body: JSON.stringify(params),
+        }});
+      }} catch (err) {{
+        // leave the slider as the user set it; will resync on next page load
+      }}
+    }}
+
+    async function loadChannelSettings() {{
+      for (const key of Object.keys(channels)) {{
+        try {{
+          const res = await fetch("/radio/" + key + "/params?x=" + Date.now());
+          const data = await res.json();
+          const slider = document.querySelector(`.sensitivity-slider[data-channel="${{key}}"]`);
+          if (slider && typeof data.open_threshold_db === "number") {{
+            const pos = openThresholdToSlider(data.open_threshold_db);
+            slider.value = pos;
+            updateSensitivityLabel(key, pos);
+          }}
+        }} catch (err) {{
+          // leave the default slider position (50%) if this fails
+        }}
+      }}
+    }}
+
     audio.onerror = function() {{
       status.innerText = "Status: Audio error. Press Stop, wait 2 seconds, then select a channel.";
       clearActiveButtons();
@@ -478,6 +715,9 @@ def player():
         // leave default "Idle" status if this check fails
       }}
     }})();
+
+    loadScanChannels();
+    loadChannelSettings();
   </script>
 </body>
 </html>

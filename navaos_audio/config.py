@@ -11,6 +11,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, replace
 from threading import RLock
+from typing import Generic, TypeVar
 
 
 @dataclass(frozen=True)
@@ -38,18 +39,32 @@ class ChannelConfig:
     volume: float = 1.0
 
 
-class ConfigStore:
-    """Thread-safe holder for a ChannelConfig that supports live updates."""
+@dataclass(frozen=True)
+class ScanSettings:
+    """Scan-wide tuning - NOT per-channel, unlike ChannelConfig. One instance
+    governs an entire ScanController regardless of which channel it's
+    currently visiting."""
+    dwell_seconds: float = 1.0          # how long to sit on a quiet channel before advancing
+    lock_sustain_s: float = 0.4         # how long is_open must hold continuously before locking
+    auto_unlock_quiet_s: float = 60.0   # how long a lock must be continuously quiet before auto-resume
 
-    def __init__(self, config: ChannelConfig):
+
+_T = TypeVar("_T")
+
+
+class ConfigStore(Generic[_T]):
+    """Thread-safe holder for a frozen dataclass config that supports live
+    updates (ChannelConfig or ScanSettings)."""
+
+    def __init__(self, config: _T):
         self._lock = RLock()
         self._config = config
 
-    def get(self) -> ChannelConfig:
+    def get(self) -> _T:
         with self._lock:
             return self._config
 
-    def update(self, **changes) -> ChannelConfig:
+    def update(self, **changes) -> _T:
         """Apply partial changes and return the new config. Thread-safe."""
         with self._lock:
             self._config = replace(self._config, **changes)

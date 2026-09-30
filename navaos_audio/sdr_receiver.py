@@ -12,9 +12,12 @@ entirely.
 from __future__ import annotations
 
 import subprocess
+import threading
 from typing import Iterator, Optional
 
 from .config import ChannelConfig
+
+_STDERR_TAIL_LINES = 50
 
 
 class RTLSDRReceiver:
@@ -22,6 +25,8 @@ class RTLSDRReceiver:
         self._cfg = config
         self._device_index = device_index
         self._proc: Optional[subprocess.Popen] = None
+        self._stderr_lines: list[str] = []
+        self._stderr_thread: Optional[threading.Thread] = None
 
     def _build_args(self) -> list[str]:
         cfg = self._cfg
@@ -43,9 +48,30 @@ class RTLSDRReceiver:
         self._proc = subprocess.Popen(
             self._build_args(),
             stdout=subprocess.PIPE,
-            stderr=subprocess.DEVNULL,
+            stderr=subprocess.PIPE,
             bufsize=0,
         )
+        self._stderr_lines = []
+        self._stderr_thread = threading.Thread(target=self._drain_stderr, daemon=True)
+        self._stderr_thread.start()
+
+    def _drain_stderr(self) -> None:
+        proc = self._proc
+        if proc is None or proc.stderr is None:
+            return
+        for raw_line in proc.stderr:
+            line = raw_line.decode(errors="replace").rstrip()
+            if not line:
+                continue
+            self._stderr_lines.append(line)
+            del self._stderr_lines[:-_STDERR_TAIL_LINES]
+
+    @property
+    def stderr_tail(self) -> list[str]:
+        """rtl_fm's most recent stderr lines - useful for diagnosing a
+        device claim failure or other startup error, which otherwise looks
+        identical to a healthy receiver producing no traffic."""
+        return list(self._stderr_lines)
 
     def stop(self) -> None:
         if self._proc is None:
@@ -56,6 +82,9 @@ class RTLSDRReceiver:
         except subprocess.TimeoutExpired:
             self._proc.kill()
         self._proc = None
+        if self._stderr_thread is not None:
+            self._stderr_thread.join(timeout=2)
+            self._stderr_thread = None
 
     def read_frames(self, frame_bytes: int) -> Iterator[bytes]:
         """Yield raw PCM chunks of exactly `frame_bytes` bytes each."""

@@ -35,6 +35,9 @@ except ImportError:  # pragma: no cover
 from .config import ChannelConfig
 
 
+_NOISE_FLOOR_MIN_HISTORY = 10  # frames NoiseFloorEstimator needs before its floor is trustworthy
+
+
 def _rms_dbfs(samples: np.ndarray) -> float:
     """RMS level of int16 PCM samples, expressed in dBFS."""
     if samples.size == 0:
@@ -61,7 +64,7 @@ class NoiseFloorEstimator:
 
     def update(self, frame_dbfs: float) -> float:
         self._history.append(frame_dbfs)
-        if len(self._history) >= 10:
+        if len(self._history) >= _NOISE_FLOOR_MIN_HISTORY:
             self._floor_dbfs = float(np.percentile(self._history, self.percentile))
         return self._floor_dbfs
 
@@ -98,6 +101,7 @@ class AdaptiveSquelch:
         self._vad = webrtcvad.Vad(config.vad_aggressiveness)
         self._noise_floor = NoiseFloorEstimator(percentile=config.noise_floor_percentile)
         self._state = _SquelchState()
+        self._frames_seen = 0
 
     def update_config(self, config: ChannelConfig) -> None:
         """Apply a new config to the running squelch (called between frames)."""
@@ -112,22 +116,33 @@ class AdaptiveSquelch:
 
         frame_dbfs = _rms_dbfs(frame)
         floor = self._noise_floor.update(frame_dbfs)
+        self._frames_seen += 1
 
+        is_speech = None
+        above_floor = None
         if cfg.squelch_enabled:
-            try:
-                is_speech = self._vad.is_speech(frame.tobytes(), sample_rate)
-            except Exception:
-                # VAD raises on malformed frame sizes; fail safe to "no speech"
-                # rather than let a decode hiccup jam the gate open.
-                is_speech = False
+            if self._frames_seen <= _NOISE_FLOOR_MIN_HISTORY:
+                # NoiseFloorEstimator hasn't seen enough real frames yet to
+                # replace its hardcoded initial guess - force closed rather
+                # than gate a decision against a floor that doesn't reflect
+                # this channel's real conditions yet. This is what caused
+                # every scan lock to false-trigger on frame 0.
+                speech_confirmed = False
+            else:
+                try:
+                    is_speech = self._vad.is_speech(frame.tobytes(), sample_rate)
+                except Exception:
+                    # VAD raises on malformed frame sizes; fail safe to "no
+                    # speech" rather than let a decode hiccup jam the gate open.
+                    is_speech = False
 
-            # Require the frame to also be meaningfully above the noise
-            # floor, so a VAD false-positive on pure hiss doesn't open the
-            # gate on its own. Uses a lower bar to *stay* open than to
-            # *open* (hysteresis), so we don't chop the tail off words.
-            threshold = cfg.close_threshold_db if self._state.open else cfg.open_threshold_db
-            above_floor = (frame_dbfs - floor) >= threshold
-            speech_confirmed = is_speech and above_floor
+                # Require the frame to also be meaningfully above the noise
+                # floor, so a VAD false-positive on pure hiss doesn't open the
+                # gate on its own. Uses a lower bar to *stay* open than to
+                # *open* (hysteresis), so we don't chop the tail off words.
+                threshold = cfg.close_threshold_db if self._state.open else cfg.open_threshold_db
+                above_floor = (frame_dbfs - floor) >= threshold
+                speech_confirmed = is_speech and above_floor
         else:
             speech_confirmed = True  # squelch disabled -> always pass audio
 
@@ -136,6 +151,14 @@ class AdaptiveSquelch:
             self._state.last_speech_time = now
         elif self._state.open and (now - self._state.last_speech_time) > cfg.hang_time_s:
             self._state.open = False
+
+        # TEMPORARY DEBUG - remove after the scan false-lock investigation.
+        print(
+            f"SQUELCH-DEBUG ch={cfg.channel} frame_dbfs={frame_dbfs:.1f} "
+            f"floor={floor:.1f} is_speech={is_speech} above_floor={above_floor} "
+            f"open={self._state.open}",
+            flush=True,
+        )
 
         target_gain = 1.0 if self._state.open else 0.0
         frame_ms = 1000.0 * len(frame) / sample_rate
