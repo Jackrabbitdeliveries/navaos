@@ -93,7 +93,7 @@ rtl_fm (-l 0, raw PCM 48 kHz) → AdaptiveSquelch → FFmpegEncoder (filters + M
 | 16 | 156.800 MHz | Distress / calling |
 | 68 | 156.425 MHz | |
 | 71 | 156.575 MHz | |
-| wx | 162.425 MHz | NOAA WX4 — continuous, good known-good test signal |
+| wx | 162.425 MHz | NOAA WX4 — continuous but weak here (~+10 dB); the only WX station received. Good weak-signal test |
 
 ### Key defaults (`config.py`)
 Squelch: `open_threshold_db=6`, `close_threshold_db=3`, `hang_time_s=1.2`,
@@ -126,6 +126,21 @@ _Last updated: 2026-09-30_
 
 Later: AGC/leveler (config fields reserved, not implemented) → UI sliders on
 the player page (`PATCH /radio/{channel}/params` already exists).
+
+### Antenna baseline (2026-09-30, new antenna, `rtl_power` gain 49.6)
+12 min marine (156.3–156.9 MHz) + 2 min WX, 1 s samples, channel power
+(±6 kHz) vs. band-median noise floor:
+- Quiet channels sit at **0 ± 0.3 dB**.
+- Real traffic seen: ch68 12:46 at **+30–33 dB**; ch71 12:54–12:56 at
+  **+24 dB** (several 2–9 s transmissions). WX4 steady at **+10–12 dB**.
+- ⇒ Carrier squelch has 20+ dB of margin on local traffic; an open threshold
+  around +6–8 dB would catch WX-strength signals too.
+- Artifacts to ignore: `rtl_power` shows a smooth ~+7 dB hump ±50 kHz around
+  its tune center (156.600 here — made 71/13 look elevated), and a narrow
+  steady spur at ~156.752 MHz (ch15, not scanned). rtl_fm tunes each channel
+  directly, so the hump won't apply there, but keep spurs in mind.
+- Test with Nava's own radio: use **1 W / low power** only — full 25 W right
+  next to the SDR antenna risks overloading/damaging the RTL-SDR front end.
 
 ### Diagnosis driving step 3
 From the 2026-09-30 scan logs:
