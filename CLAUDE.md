@@ -12,7 +12,7 @@
 
 ## What this is
 
-NavaOS is a Raspberry Pi–based monitoring system aboard a sailboat. The first
+NavaOS is a Raspberry Pi–based monitoring system for a sailboat (Nava). The first
 module is a **marine VHF receiver**: an RTL-SDR dongle on the Pi, served over
 the internet so the owner can listen to live channel audio (direct tune or
 scan) from a phone/browser anywhere.
@@ -20,11 +20,14 @@ scan) from a phone/browser anywhere.
 - Host: Raspberry Pi 5 (`nava-pi`), user `kevin`
 - Remote access: Cloudflare Tunnel (`cloudflared` service) — `ssh.nnwx.com`
   for SSH, `vhf.nnwx.com` for the web app. No port forwarding.
-- Internet: Verizon LTE (IPv6 works; IPv4 was broken in July but works as of
-  2026-09-30)
-- Antenna: **new outdoor VHF antenna ~6 ft above deck, installed late
-  Sep 2026.** All squelch thresholds tuned before this date were against the
-  old antenna and should be re-baselined.
+- **Location (since 2026-09-30 evening): at Kevin's home, not on the boat.**
+  Moved home because of recurring problems aboard. Wired Ethernet (`eth0`,
+  DHCP 10.0.0.x) to an Xfinity router; IPv4 + IPv6 both work. Tailscale is
+  also installed (`tailscale0`). Home antenna: _TBD — ask Kevin._
+- On the boat it was on Verizon LTE (IPv4 flaky in July) with a new outdoor
+  VHF antenna ~6 ft above deck (late Sep 2026).
+- RF numbers below were measured **on the boat**; they don't transfer to the
+  home setup.
 
 ## Repo & deploy
 
@@ -102,7 +105,7 @@ Scan: `dwell_seconds=1.0`, `lock_sustain_s=0.4`, `auto_unlock_quiet_s=60`.
 
 ## Current status (update this!)
 
-_Last updated: 2026-09-30_
+_Last updated: 2026-09-30 (evening — moved home)_
 
 - Integration from HANDOFF.md is complete and running on real hardware.
 - Repo unified: Pi's Jul 19 work (previously uncommitted) committed and
@@ -117,30 +120,17 @@ _Last updated: 2026-09-30_
 1. ~~Unify repo + deploy path~~ — done 2026-09-30.
 2. ~~Baseline the new antenna~~ — done 2026-09-30 (results below).
 3. **Move squelch to RF/carrier power** instead of audio loudness (see
-   Diagnosis). `rtl_fm` outputs demodulated audio only — no power reading —
-   so this likely means reading IQ (`rtl_sdr` or pyrtlsdr) and doing FM demod
-   + power measurement in Python. Keep VAD optional.
+   Diagnosis). `rtl_fm` outputs demodulated audio only — no power reading.
+   Two options: (a) **FM noise squelch** from the audio rtl_fm already gives
+   (prototype looked good — see "Step 3 prototype test"), or (b) read IQ
+   (`rtl_sdr`/pyrtlsdr) and demod + measure RF power in Python. Prefer (a)
+   if it holds up. Keep VAD optional.
 4. **Handheld test** on a working channel (68/71, not 16): lock fast, hold
    through transmission, release after hang time.
 5. Remove debug print, commit.
 
 Later: AGC/leveler (config fields reserved, not implemented) → UI sliders on
 the player page (`PATCH /radio/{channel}/params` already exists).
-
-### Antenna baseline (2026-09-30, new antenna, `rtl_power` gain 49.6)
-12 min marine (156.3–156.9 MHz) + 2 min WX, 1 s samples, channel power
-(±6 kHz) vs. band-median noise floor:
-- Quiet channels sit at **0 ± 0.3 dB**.
-- Real traffic seen: ch68 12:46 at **+30–33 dB**; ch71 12:54–12:56 at
-  **+24 dB** (several 2–9 s transmissions). WX4 steady at **+10–12 dB**.
-- ⇒ Carrier squelch has 20+ dB of margin on local traffic; an open threshold
-  around +6–8 dB would catch WX-strength signals too.
-- Artifacts to ignore: `rtl_power` shows a smooth ~+7 dB hump ±50 kHz around
-  its tune center (156.600 here — made 71/13 look elevated), and a narrow
-  steady spur at ~156.752 MHz (ch15, not scanned). rtl_fm tunes each channel
-  directly, so the hump won't apply there, but keep spurs in mind.
-- Test with Nava's own radio: use **1 W / low power** only — full 25 W right
-  next to the SDR antenna risks overloading/damaging the RTL-SDR front end.
 
 ### Diagnosis driving step 3
 From the 2026-09-30 scan logs:
@@ -166,6 +156,24 @@ band-median noise floor. Re-run with `tools/rf_baseline.py` (usage in file).
   (156.60 MHz, inflated 71/13 readings to +3–7 dB) and a narrow spur at
   156.752 MHz. When measuring power in code, tune offset from the channel so
   the dongle's DC/center hump doesn't land on it.
+- Test transmissions from Nava's own radio: **1 W / low power only** — 25 W
+  right next to the SDR antenna risks overloading/damaging the RTL-SDR.
+- These numbers are for the **boat antenna/location only** — re-baseline
+  wherever the receiver moves.
+
+### Step 3 prototype test: FM noise squelch (2026-09-30, on the boat)
+Alternative to IQ/RF power that keeps `rtl_fm`: FM receivers "quiet" when a
+carrier is present, so energy **above the voice band** drops. 15 s captures
+with the service's exact rtl_fm args, 20 ms frames, 100 ms smoothing,
+metric = (8–16 kHz energy) − (0.3–3 kHz energy):
+- Pure noise (ch16): **+2 to +10 dB** (p1 +1.7).
+- Weak carrier + voice (WX4, ~+10 dB RF): **−6 to −2 dB** (p99 −2.3) — clean
+  separation even though the weak signal barely reduced absolute HF noise.
+- Strong local traffic (ch13, caught mid-capture): 8–16 kHz energy fell
+  ~15 dB when the carrier keyed; ratio −8 to −10 dB.
+- ⇒ Promising and far less work than IQ demod. **Untested:** dead carrier
+  with no voice, and the ratio at different locations/antennas. Decide
+  between this and IQ/RF power after re-testing at the current location.
 
 ## Open issues / backlog
 
