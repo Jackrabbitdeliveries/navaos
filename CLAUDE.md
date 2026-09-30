@@ -23,7 +23,7 @@ scan) from a phone/browser anywhere.
 - **Location (since 2026-09-30 evening): at Kevin's home, not on the boat.**
   Moved home because of recurring problems aboard. Wired Ethernet (`eth0`,
   DHCP 10.0.0.x) to an Xfinity router; IPv4 + IPv6 both work. Tailscale is
-  also installed (`tailscale0`). Home antenna: _TBD — ask Kevin._
+  also installed (`tailscale0`). Antenna/cable: **same whip + cable as on the boat**, indoors in front of a window.
 - On the boat it was on Verizon LTE (IPv4 flaky in July) with a new outdoor
   VHF antenna ~6 ft above deck (late Sep 2026).
 - RF numbers below were measured **on the boat**; they don't transfer to the
@@ -181,6 +181,14 @@ metric = (8–16 kHz energy) − (0.3–3 kHz energy):
 here until issues are set up.)
 
 - Squelch redesign around RF power (plan steps 3–4).
+- **Boat electrical noise (2026-09-30):** on shore power, a ch71 radio check
+  from Nava's own VHF had a "wicked hum" on the transmitted audio; hum went
+  away when shore power was killed (some static remained). Wi-Fi camera and
+  Google Meet also kept dropping. Not the SDR (receive-only). Suspects:
+  battery charger/inverter ripple on the 12 V bus, or a shore-power ground
+  loop. Next test aboard: shore power ON with charger/inverter OFF — hum gone
+  ⇒ charger/inverter; hum stays ⇒ shore-power grounding (galvanic isolator).
+  The Pi was also on shore power, so re-check SDR noise floor once fixed.
 - Remove `SQUELCH-DEBUG` print.
 - Add `requirements.txt` (pin setuptools <81 for webrtcvad).
 - AGC/leveler not implemented.
