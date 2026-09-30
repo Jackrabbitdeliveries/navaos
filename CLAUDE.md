@@ -229,7 +229,7 @@ here until issues are set up.)
 - **Faster scanning:** keep the dongle open and retune instead of restarting
   rtl_sdr per hop (rtl_tcp or pyrtlsdr). RF squelch decides in ~60 ms, so a
   5-channel cycle could drop from ~9 s to ~1–2 s.
-- **Boat electrical noise (2026-09-30):** on shore power, a ch71 radio check
+- **Boat electrical noise (2026-09-30) — likely charger, see below:** on shore power, a ch71 radio check
   from Nava's own VHF had a "wicked hum" on the transmitted audio; hum went
   away when shore power was killed (some static remained). Wi-Fi camera and
   Google Meet also kept dropping. Not the SDR (receive-only). Suspects:
@@ -244,10 +244,13 @@ here until issues are set up.)
   speech (~0.5 kHz FM deviation). Not software (frame artifacts would be
   50 Hz multiples). No 120 Hz pattern on FM broadcast 102.2/88.5 MHz
   received by the same SDR (but that test is ~20 dB less sensitive) ⇒
-  points at the handheld or its surroundings rather than the Pi/SDR — not
-  yet proven. WX4 not receivable at home even with the whip outdoors.
-  Next tests: handheld off any charger; handheld 20 m+ away; Pi on a USB
-  power bank (no mains).
+  points at the handheld or its surroundings rather than the Pi/SDR.
+  **RESOLVED:** hum disappeared with the handheld off its charger (Kevin's
+  ear test) — the handheld's charger put 120 Hz ripple on its TX audio.
+  Receiver/SDR/software are fine. Likely the same mechanism as the boat hum
+  (boat battery charger on shore power → ripple on Nava's radio); confirm
+  aboard with shore power ON and charger OFF. Test transmitters must be on
+  battery, never on a charger. WX4 not receivable at home even outdoors.
 - Remove `SQUELCH-DEBUG` print.
 - Add `requirements.txt` (pin setuptools <81 for webrtcvad).
 - AGC/leveler not implemented.
