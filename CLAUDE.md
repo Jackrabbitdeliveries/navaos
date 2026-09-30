@@ -43,7 +43,8 @@ scan) from a phone/browser anywhere.
   old, **unused** copy — don't edit them.
 - Deploy a change: edit → commit → `git push` → `sudo systemctl restart navaos.service`
   (sudo needs Kevin's password; ask Kevin to run it in their own terminal).
-- Logs: `journalctl -u navaos.service -f`
+- Logs: `journalctl -u navaos.service -f` — watch for `SQUELCH-OPEN` /
+  `SQUELCH-CLOSE` (one pair per transmission) and `*-FAILURE` lines.
 - Restarting interrupts any listener/scan — check `journalctl` for recent
   `/radio/status` polling from a client before restarting, and tell Kevin.
 
@@ -135,8 +136,11 @@ _Last updated: 2026-09-30 (evening — moved home)_
   direct, whip outdoors, handheld nearby): both transmissions caught (6.1 s,
   5.6 s), handheld at **+43 to +54 dB**, noise between them max +1.3 dB, no
   false opens. **Audio was very quiet** (voice ~−39 dBFS, chain had no gain)
-  → added fixed makeup gain + limiter (~+24 dB); needs a re-test. Scan-mode
-  handheld test not done yet.
+  → added fixed makeup gain + limiter (~+24 dB). Re-test 19:29: level good
+  (speech ~−18 to −21 dBFS, peaks −1) but a 120 Hz hum → traced to the
+  handheld's charger (see Open issues). **Scan test 19:46 passed:** hopped
+  ~1.8 s/channel, opened on arrival at 68 (+59 dB), locked, held after
+  unkey, auto-resumed after 60 s quiet.
 - Step 3 verification before deploy:
   Verified: synthetic FM — SNR meter accurate to ±0.5 dB from 6–30 dB,
   demod tone level exactly matches rtl_fm scaling; real dongle at home —
@@ -145,9 +149,9 @@ _Last updated: 2026-09-30 (evening — moved home)_
 - **Fixed pre-existing scan bug:** dwell was timed from device start, so each
   1 s hop only listened ~0.3 s (< the 0.4 s `lock_sustain_s`) — the scanner
   could almost never lock. Now timed from first frame.
-- **Temporary `SQUELCH-DEBUG` print (now also logs `rf_snr`) is still in `AdaptiveSquelch.process()`**
-  (~600 journal lines/min while scanning). Remove or convert to
-  `logging.debug` once squelch work is done.
+- Per-frame `SQUELCH-DEBUG` print **removed**; replaced by one
+  `SQUELCH-OPEN ch= rf_snr= audio_dbfs=` / `SQUELCH-CLOSE ch= open_s=
+  peak_rf_snr=` line per transmission.
 
 ### Plan (agreed 2026-09-30, in order)
 1. ~~Unify repo + deploy path~~ — done 2026-09-30.
@@ -158,9 +162,11 @@ _Last updated: 2026-09-30 (evening — moved home)_
    RF power measurement in Python. The FM-noise-squelch shortcut was tested
    and rejected (see "Step 3 prototype test"). Tune offset from the channel
    to avoid the DC/center hump. Keep VAD optional.
-4. **Handheld test** on a working channel (68/71, not 16): lock fast, hold
-   through transmission, release after hang time.
-5. Remove debug print, commit.
+   — done & deployed 2026-09-30.
+4. ~~Handheld test~~ — passed 2026-09-30 (direct + scan).
+5. ~~Remove debug print~~ — done 2026-09-30.
+6. **Next: test aboard Nava** with the real antenna and real traffic;
+   confirm the boat hum is the battery charger (shore power on, charger off).
 
 Later: AGC/leveler (config fields reserved, not implemented) → UI sliders on
 the player page (`PATCH /radio/{channel}/params` already exists).
@@ -225,7 +231,6 @@ metric = (8–16 kHz energy) − (0.3–3 kHz energy):
 (No GitHub issues exist yet — the deploy key can't use the issues API. Track
 here until issues are set up.)
 
-- Step 4 handheld test of the RF squelch (whip outdoors).
 - **Faster scanning:** keep the dongle open and retune instead of restarting
   rtl_sdr per hop (rtl_tcp or pyrtlsdr). RF squelch decides in ~60 ms, so a
   5-channel cycle could drop from ~9 s to ~1–2 s.
@@ -251,7 +256,6 @@ here until issues are set up.)
   (boat battery charger on shore power → ripple on Nava's radio); confirm
   aboard with shore power ON and charger OFF. Test transmitters must be on
   battery, never on a charger. WX4 not receivable at home even outdoors.
-- Remove `SQUELCH-DEBUG` print.
 - Add `requirements.txt` (pin setuptools <81 for webrtcvad).
 - AGC/leveler not implemented.
 - UI sliders not built.

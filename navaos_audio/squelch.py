@@ -80,6 +80,8 @@ class _SquelchState:
     open: bool = False
     gain: float = 0.0          # current envelope gain, 0.0-1.0
     last_speech_time: float = 0.0
+    opened_at: float = 0.0
+    peak_rf_snr: float = float("-inf")
 
 
 class AdaptiveSquelch:
@@ -161,19 +163,24 @@ class AdaptiveSquelch:
         else:
             speech_confirmed = True  # squelch disabled -> always pass audio
 
+        st = self._state
         if speech_confirmed:
-            self._state.open = True
-            self._state.last_speech_time = now
-        elif self._state.open and (now - self._state.last_speech_time) > cfg.hang_time_s:
-            self._state.open = False
-
-        # TEMPORARY DEBUG - remove after the scan false-lock investigation.
-        print(
-            f"SQUELCH-DEBUG ch={cfg.channel} frame_dbfs={frame_dbfs:.1f} "
-            f"floor={floor:.1f} rf_snr={'-' if rf_snr_db is None else f'{rf_snr_db:.1f}'} "
-            f"is_speech={is_speech} above_floor={above_floor} open={self._state.open}",
-            flush=True,
-        )
+            if not st.open:
+                st.opened_at = now
+                st.peak_rf_snr = float("-inf")
+                snr = "-" if rf_snr_db is None else f"{rf_snr_db:.1f}"
+                print(f"SQUELCH-OPEN ch={cfg.channel} rf_snr={snr} audio_dbfs={frame_dbfs:.1f}", flush=True)
+            st.open = True
+            st.last_speech_time = now
+        elif st.open and (now - st.last_speech_time) > cfg.hang_time_s:
+            st.open = False
+            peak = "-" if st.peak_rf_snr == float("-inf") else f"{st.peak_rf_snr:.1f}"
+            print(
+                f"SQUELCH-CLOSE ch={cfg.channel} open_s={now - st.opened_at:.1f} peak_rf_snr={peak}",
+                flush=True,
+            )
+        if st.open and rf_snr_db is not None:
+            st.peak_rf_snr = max(st.peak_rf_snr, rf_snr_db)
 
         target_gain = 1.0 if self._state.open else 0.0
         frame_ms = 1000.0 * len(frame) / sample_rate
