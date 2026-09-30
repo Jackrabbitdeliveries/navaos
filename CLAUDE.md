@@ -78,7 +78,11 @@ Legacy path (`ChannelConfig.receiver="rtl_fm"`): rtl_fm → AdaptiveSquelch
     `rf_close_threshold_db`, closed for the first 3 frames after a tune.
     **Audio mode** (legacy rtl_fm): VAD + level above adaptive floor, closed
     for the first 10 frames. Both share the hang timer + click-free envelope.
-  - `ffmpeg_encoder.py` — existing tuned filter chain + MP3 encode via stdin.
+  - `ffmpeg_encoder.py` — filter chain + MP3 encode via stdin:
+    highpass 300 → lowpass 3k → afftdn → **+`makeup_gain_db`** → compressor
+    (makeup ×`compressor_makeup`) → `volume` → limiter 0.9. NBFM audio leaves
+    the demod ~−40 dBFS whatever the signal strength, so the gain is fixed,
+    not AGC.
   - `audio_pipeline.py` — one per direct-tuned channel; fans MP3 out to N
     subscribers.
   - `scan_controller.py` — cycles channels, locks on traffic (open ≥
@@ -113,7 +117,8 @@ Legacy path (`ChannelConfig.receiver="rtl_fm"`): rtl_fm → AdaptiveSquelch
 Receiver: `receiver="iq"`, `iq_sample_rate=240000`, `iq_offset_hz=50000`,
 `rf_channel_half_bw_hz=6000`, `rf_gain=49.6`.
 RF squelch: `rf_open_threshold_db=10`, `rf_close_threshold_db=6`,
-`hang_time_s=1.2`. Audio-mode (legacy) squelch: `open_threshold_db=6`,
+`hang_time_s=1.2`. Output: `makeup_gain_db=18`, `compressor_makeup=3`,
+`volume=1.0`. Audio-mode (legacy) squelch: `open_threshold_db=6`,
 `close_threshold_db=3`, `vad_aggressiveness=2`, `noise_floor_percentile=20`.
 Scan: `dwell_seconds=1.0`, `lock_sustain_s=0.4`, `auto_unlock_quiet_s=60`.
 
@@ -126,7 +131,13 @@ _Last updated: 2026-09-30 (evening — moved home)_
   merged with GitHub; service repointed to run from this repo.
 - Frame-0 scan false lock: **fixed** (warmup guard in `squelch.py`), verified
   from a live scan on 2026-09-30 — 0 opens during warmup across 331 dwells.
-- **Step 3 implemented (2026-09-30 evening), pending deploy + step 4 test.**
+- **Step 3 deployed 2026-09-30 19:17.** First handheld test (19:21, ch71
+  direct, whip outdoors, handheld nearby): both transmissions caught (6.1 s,
+  5.6 s), handheld at **+43 to +54 dB**, noise between them max +1.3 dB, no
+  false opens. **Audio was very quiet** (voice ~−39 dBFS, chain had no gain)
+  → added fixed makeup gain + limiter (~+24 dB); needs a re-test. Scan-mode
+  handheld test not done yet.
+- Step 3 verification before deploy:
   Verified: synthetic FM — SNR meter accurate to ±0.5 dB from 6–30 dB,
   demod tone level exactly matches rtl_fm scaling; real dongle at home —
   empty channels 0 ± 0.7 dB (max +1.3 in 450 frames); simulated scan —

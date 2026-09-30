@@ -48,6 +48,10 @@ class ChannelConfig:
     agc_target_rms_dbfs: float = -18.0
     agc_max_gain_db: float = 24.0
 
+    # Output level (FFmpeg): +18 dB pre-gain and x3 compressor makeup take
+    # typical NBFM speech from ~-43 to ~-18 dBFS mean (tested 2026-09-30).
+    makeup_gain_db: float = 18.0
+    compressor_makeup: float = 3.0
     volume: float = 1.0
 
 

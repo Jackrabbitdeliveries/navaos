@@ -26,8 +26,15 @@ class FFmpegEncoder:
             "highpass=f=300",
             "lowpass=f=3000",
             "afftdn=nr=12:nf=-25",
-            "acompressor=threshold=-20dB:ratio=3:attack=5:release=100",
+            # NBFM audio comes out of the demod around -40 dBFS regardless of
+            # signal strength (level is set by transmitter deviation), so it
+            # needs fixed makeup gain - the compressor alone never engaged.
+            # Gain goes after afftdn so its absolute noise floor is unchanged;
+            # the limiter keeps hot transmitters from clipping.
+            f"volume={cfg.makeup_gain_db}dB",
+            f"acompressor=threshold=-20dB:ratio=3:attack=5:release=100:makeup={cfg.compressor_makeup}",
             f"volume={cfg.volume}",
+            "alimiter=limit=0.9:level=disabled",
         ])
         return [
             "ffmpeg",
