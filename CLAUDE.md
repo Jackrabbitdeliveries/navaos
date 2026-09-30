@@ -115,11 +115,11 @@ _Last updated: 2026-09-30_
 
 ### Plan (agreed 2026-09-30, in order)
 1. ~~Unify repo + deploy path~~ — done 2026-09-30.
-2. **Baseline the new antenna** — log per-channel RF power, quiet vs. traffic,
-   10–15 min; use `wx` as known-good signal.
+2. ~~Baseline the new antenna~~ — done 2026-09-30 (results below).
 3. **Move squelch to RF/carrier power** instead of audio loudness (see
-   Diagnosis). Check whether `sdr_receiver.py`/`rtl_fm` can expose signal
-   power first; keep VAD optional.
+   Diagnosis). `rtl_fm` outputs demodulated audio only — no power reading —
+   so this likely means reading IQ (`rtl_sdr` or pyrtlsdr) and doing FM demod
+   + power measurement in Python. Keep VAD optional.
 4. **Handheld test** on a working channel (68/71, not 16): lock fast, hold
    through transmission, release after hang time.
 5. Remove debug print, commit.
@@ -137,12 +137,27 @@ From the 2026-09-30 scan logs:
 - Marine radios use carrier (RF power) squelch; with the new antenna real
   traffic should stand well clear of the noise floor.
 
+### RF baseline, new antenna (2026-09-30, 12:45–12:59)
+`rtl_power`, gain 49.6, 1 s integration, ±6 kHz per channel; dB relative to the
+band-median noise floor. Re-run with `tools/rf_baseline.py` (usage in file).
+- **Quiet channels are dead flat:** 68, 09, 16 median ≈ 0 dB, p90 ≤ 0 dB.
+- **Real traffic is +24 to +33 dB:** ch68 at 12:46 (3 bursts, 2–6 s, +30–33 dB);
+  ch71 at 12:54–12:56 (6 bursts, 2–9 s, ~+24 dB).
+- ⇒ **~25 dB margin.** An RF threshold of roughly +10 dB open / +6 dB close
+  should gate cleanly; confirm with the handheld test.
+- **NOAA wx is weak here: only ~+10 dB** (continuous). Don't use wx as a
+  strong reference, and don't apply marine thresholds to it blindly.
+- Artifacts, not signals: a ~100 kHz hump around the rtl_power tuning center
+  (156.60 MHz, inflated 71/13 readings to +3–7 dB) and a narrow spur at
+  156.752 MHz. When measuring power in code, tune offset from the channel so
+  the dongle's DC/center hump doesn't land on it.
+
 ## Open issues / backlog
 
 (No GitHub issues exist yet — the deploy key can't use the issues API. Track
 here until issues are set up.)
 
-- Squelch redesign around RF power (plan steps 2–4).
+- Squelch redesign around RF power (plan steps 3–4).
 - Remove `SQUELCH-DEBUG` print.
 - Add `requirements.txt` (pin setuptools <81 for webrtcvad).
 - AGC/leveler not implemented.
