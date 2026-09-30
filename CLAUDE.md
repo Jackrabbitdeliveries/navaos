@@ -165,8 +165,12 @@ _Last updated: 2026-09-30 (evening — moved home)_
    — done & deployed 2026-09-30.
 4. ~~Handheld test~~ — passed 2026-09-30 (direct + scan).
 5. ~~Remove debug print~~ — done 2026-09-30.
-6. **Next: test aboard Nava** with the real antenna and real traffic;
-   confirm the boat hum is the battery charger (shore power on, charger off).
+6. **Next (changed 2026-09-30): stay at home for a while.** Kevin plans to
+   mount the whip above the house roof and try to receive ch09 (bridge
+   tender + boats) during bridge openings. Ideas offered: record each
+   transmission as a timestamped clip (+ list page) to review later.
+   Boat test (real traffic; confirm boat hum = battery charger with shore
+   power on / charger off) comes later.
 
 Later: AGC/leveler (config fields reserved, not implemented) → UI sliders on
 the player page (`PATCH /radio/{channel}/params` already exists).
