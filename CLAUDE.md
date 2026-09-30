@@ -121,10 +121,10 @@ _Last updated: 2026-09-30 (evening — moved home)_
 2. ~~Baseline the new antenna~~ — done 2026-09-30 (results below).
 3. **Move squelch to RF/carrier power** instead of audio loudness (see
    Diagnosis). `rtl_fm` outputs demodulated audio only — no power reading.
-   Two options: (a) **FM noise squelch** from the audio rtl_fm already gives
-   (prototype looked good — see "Step 3 prototype test"), or (b) read IQ
-   (`rtl_sdr`/pyrtlsdr) and demod + measure RF power in Python. Prefer (a)
-   if it holds up. Keep VAD optional.
+   **Decision (2026-09-30): read IQ** (`rtl_sdr`/pyrtlsdr), do FM demod +
+   RF power measurement in Python. The FM-noise-squelch shortcut was tested
+   and rejected (see "Step 3 prototype test"). Tune offset from the channel
+   to avoid the DC/center hump. Keep VAD optional.
 4. **Handheld test** on a working channel (68/71, not 16): lock fast, hold
    through transmission, release after hang time.
 5. Remove debug print, commit.
@@ -171,9 +171,21 @@ metric = (8–16 kHz energy) − (0.3–3 kHz energy):
   separation even though the weak signal barely reduced absolute HF noise.
 - Strong local traffic (ch13, caught mid-capture): 8–16 kHz energy fell
   ~15 dB when the carrier keyed; ratio −8 to −10 dB.
-- ⇒ Promising and far less work than IQ demod. **Untested:** dead carrier
-  with no voice, and the ratio at different locations/antennas. Decide
-  between this and IQ/RF power after re-testing at the current location.
+- ⇒ Looked promising on the boat, **but failed the home re-test (same day,
+  evening):** pure noise at home scored **−7 dB on every channel** — i.e.
+  what counted as "carrier" on the boat. The absolute ratio depends on the
+  location/antenna/noise environment, and weak signals (WX on the boat)
+  barely quiet the HF noise at all. **Rejected as the primary squelch** —
+  go with IQ/RF power (option b), which measured cleanly in both places.
+
+### Home reception (2026-09-30 evening, whip indoors at window)
+- FM broadcast stations only +7 to +18 dB (normally +30 dB or more) ⇒ antenna
+  heavily attenuated indoors (low-E window glass is a common cause).
+- **No NOAA WX signal on any of the 7 WX frequencies**, no marine traffic.
+  At home there is currently **no real signal to test squelch against** —
+  need the whip outdoors, or another narrowband-FM source (e.g. a local 2 m
+  amateur repeater, receive-only). Don't transmit on marine VHF from land
+  (FCC: ship stations are for use on vessels).
 
 ## Open issues / backlog
 
