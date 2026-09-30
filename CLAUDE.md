@@ -237,6 +237,17 @@ here until issues are set up.)
   loop. Next test aboard: shore power ON with charger/inverter OFF — hum gone
   ⇒ charger/inverter; hum stays ⇒ shore-power grounding (galvanic isolator).
   The Pi was also on shore power, so re-check SDR noise floor once fixed.
+- **120 Hz hum at home too (2026-09-30 19:29–19:35):** handheld test on ch71
+  (+46 dB) had a "major hum". Recording: lines at **120 Hz harmonics**
+  (360/480/720/1080/1200 Hz…) = rectified 60 Hz mains, +16 dB above the
+  local spectrum on a silent carrier, +23 dB with voice; hum ≈ as loud as
+  speech (~0.5 kHz FM deviation). Not software (frame artifacts would be
+  50 Hz multiples). No 120 Hz pattern on FM broadcast 102.2/88.5 MHz
+  received by the same SDR (but that test is ~20 dB less sensitive) ⇒
+  points at the handheld or its surroundings rather than the Pi/SDR — not
+  yet proven. WX4 not receivable at home even with the whip outdoors.
+  Next tests: handheld off any charger; handheld 20 m+ away; Pi on a USB
+  power bank (no mains).
 - Remove `SQUELCH-DEBUG` print.
 - Add `requirements.txt` (pin setuptools <81 for webrtcvad).
 - AGC/leveler not implemented.
