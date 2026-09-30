@@ -129,6 +129,7 @@ class AdaptiveSquelch:
             above_floor = (frame_dbfs - floor) >= threshold
             speech_confirmed = is_speech and above_floor
         else:
+            is_speech = None  # squelch disabled -> VAD not evaluated
             speech_confirmed = True  # squelch disabled -> always pass audio
 
         if speech_confirmed:
@@ -136,6 +137,14 @@ class AdaptiveSquelch:
             self._state.last_speech_time = now
         elif self._state.open and (now - self._state.last_speech_time) > cfg.hang_time_s:
             self._state.open = False
+
+        # TEMP DEBUG - remove once the scan false-lock theory is confirmed/refuted.
+        print(
+            f"[squelch-debug] ch={cfg.channel} frame_dbfs={frame_dbfs:.1f} "
+            f"floor={floor:.1f} is_speech={is_speech} "
+            f"decision={'OPEN' if self._state.open else 'closed'}",
+            flush=True,
+        )
 
         target_gain = 1.0 if self._state.open else 0.0
         frame_ms = 1000.0 * len(frame) / sample_rate
