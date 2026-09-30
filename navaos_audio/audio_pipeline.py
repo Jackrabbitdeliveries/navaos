@@ -22,7 +22,7 @@ import numpy as np
 
 from .config import ConfigStore
 from .ffmpeg_encoder import FFmpegEncoder
-from .sdr_receiver import RTLSDRReceiver
+from .iq_receiver import make_receiver
 from .squelch import AdaptiveSquelch
 
 _VAD_FRAME_MS = 20  # webrtcvad supports 10/20/30ms frames only
@@ -115,7 +115,7 @@ class AudioPipeline:
 
     def _run(self) -> None:
         cfg = self._config_store.get()
-        receiver = RTLSDRReceiver(cfg, self._device_index)
+        receiver = make_receiver(cfg, self._device_index)
         squelch = AdaptiveSquelch(cfg)
         encoder = FFmpegEncoder(cfg)
 
@@ -147,7 +147,9 @@ class AudioPipeline:
                     squelch.update_config(latest_cfg)
 
                 frame = np.frombuffer(pcm_chunk, dtype=np.int16)
-                gated = squelch.process(frame, cfg.sample_rate)
+                gated = squelch.process(
+                    frame, cfg.sample_rate, rf_snr_db=getattr(receiver, "rf_snr_db", None)
+                )
                 encoder.write(gated.tobytes())
             else:
                 # The loop ran out on its own (rtl_fm exited/EOF) rather than

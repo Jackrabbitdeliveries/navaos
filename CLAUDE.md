@@ -54,8 +54,11 @@ numpy 2.5, pydantic 2.13, webrtcvad 2.0.10, setuptools 80.x (webrtcvad needs
 ## Architecture
 
 ```
-rtl_fm (-l 0, raw PCM 48 kHz) → AdaptiveSquelch → FFmpegEncoder (filters + MP3) → browser
+rtl_sdr (IQ 240 kS/s, tuned +50 kHz) → IQReceiver (RF SNR + NBFM demod → PCM 48 kHz)
+    → AdaptiveSquelch (RF mode) → FFmpegEncoder (filters + MP3) → browser
 ```
+Legacy path (`ChannelConfig.receiver="rtl_fm"`): rtl_fm → AdaptiveSquelch
+(audio/VAD mode) → … — kept as a fallback.
 
 - `main.py` — FastAPI app; mounts the single router; shuts down
   `channel_manager` on lifespan exit.
@@ -64,17 +67,25 @@ rtl_fm (-l 0, raw PCM 48 kHz) → AdaptiveSquelch → FFmpegEncoder (filters + M
 - `navaos_audio/` package:
   - `config.py` — `ChannelConfig` (per-channel, frozen dataclass),
     `ScanSettings` (scan-wide), thread-safe `ConfigStore` for live updates.
-  - `sdr_receiver.py` — `RTLSDRReceiver`, wraps `rtl_fm` (explicit argv, no
-    shell); keeps a tail of rtl_fm stderr for diagnostics.
-  - `squelch.py` — `AdaptiveSquelch`: noise-floor estimator + WebRTC VAD +
-    hysteresis + hang timer + click-free gain envelope. Forced closed for the
-    first 10 frames after (re)tune.
+  - `iq_receiver.py` — **default receiver.** `IQReceiver` runs `rtl_sdr`
+    and, per 20 ms frame, measures `rf_snr_db` (channel ±6 kHz vs. band-median
+    noise, ~0 dB when empty) and demodulates NBFM with rtl_fm-compatible
+    scaling + 75 µs de-emphasis (pure numpy, ~5% of one core).
+    `make_receiver()` picks IQ vs. rtl_fm from config.
+  - `sdr_receiver.py` — legacy `RTLSDRReceiver` (rtl_fm); fallback only.
+  - `squelch.py` — `AdaptiveSquelch`. **RF mode** (when the receiver supplies
+    `rf_snr_db`): open ≥ `rf_open_threshold_db`, stay open ≥
+    `rf_close_threshold_db`, closed for the first 3 frames after a tune.
+    **Audio mode** (legacy rtl_fm): VAD + level above adaptive floor, closed
+    for the first 10 frames. Both share the hang timer + click-free envelope.
   - `ffmpeg_encoder.py` — existing tuned filter chain + MP3 encode via stdin.
   - `audio_pipeline.py` — one per direct-tuned channel; fans MP3 out to N
     subscribers.
   - `scan_controller.py` — cycles channels, locks on traffic (open ≥
     `lock_sustain_s`), auto-resumes after `auto_unlock_quiet_s` of quiet or on
-    `resume()`.
+    `resume()`. Dwell is timed from the **first frame** (device open takes
+    ~0.7 s) and never hops while the gate is open. ~1.75 s per channel,
+    ~9 s per 5-channel cycle; lock lands ~1.1 s after arriving on a busy channel.
   - `channel_manager.py` — **the single hardware arbiter**: only one session
     (direct tune OR scan) may own the dongle; conflicts → HTTP 409.
     `DEFAULT_SCAN_ORDER = ["09", "13", "16", "68", "71"]`.
@@ -99,8 +110,11 @@ rtl_fm (-l 0, raw PCM 48 kHz) → AdaptiveSquelch → FFmpegEncoder (filters + M
 | wx | 162.425 MHz | NOAA WX4 — continuous but weak here (~+10 dB); the only WX station received. Good weak-signal test |
 
 ### Key defaults (`config.py`)
-Squelch: `open_threshold_db=6`, `close_threshold_db=3`, `hang_time_s=1.2`,
-`vad_aggressiveness=2`, `noise_floor_percentile=20`, `rf_gain=49.6`.
+Receiver: `receiver="iq"`, `iq_sample_rate=240000`, `iq_offset_hz=50000`,
+`rf_channel_half_bw_hz=6000`, `rf_gain=49.6`.
+RF squelch: `rf_open_threshold_db=10`, `rf_close_threshold_db=6`,
+`hang_time_s=1.2`. Audio-mode (legacy) squelch: `open_threshold_db=6`,
+`close_threshold_db=3`, `vad_aggressiveness=2`, `noise_floor_percentile=20`.
 Scan: `dwell_seconds=1.0`, `lock_sustain_s=0.4`, `auto_unlock_quiet_s=60`.
 
 ## Current status (update this!)
@@ -112,7 +126,15 @@ _Last updated: 2026-09-30 (evening — moved home)_
   merged with GitHub; service repointed to run from this repo.
 - Frame-0 scan false lock: **fixed** (warmup guard in `squelch.py`), verified
   from a live scan on 2026-09-30 — 0 opens during warmup across 331 dwells.
-- **Temporary `SQUELCH-DEBUG` print is still in `AdaptiveSquelch.process()`**
+- **Step 3 implemented (2026-09-30 evening), pending deploy + step 4 test.**
+  Verified: synthetic FM — SNR meter accurate to ±0.5 dB from 6–30 dB,
+  demod tone level exactly matches rtl_fm scaling; real dongle at home —
+  empty channels 0 ± 0.7 dB (max +1.3 in 450 frames); simulated scan —
+  cycles, locks, auto-unlocks correctly.
+- **Fixed pre-existing scan bug:** dwell was timed from device start, so each
+  1 s hop only listened ~0.3 s (< the 0.4 s `lock_sustain_s`) — the scanner
+  could almost never lock. Now timed from first frame.
+- **Temporary `SQUELCH-DEBUG` print (now also logs `rf_snr`) is still in `AdaptiveSquelch.process()`**
   (~600 journal lines/min while scanning). Remove or convert to
   `logging.debug` once squelch work is done.
 
@@ -192,7 +214,10 @@ metric = (8–16 kHz energy) − (0.3–3 kHz energy):
 (No GitHub issues exist yet — the deploy key can't use the issues API. Track
 here until issues are set up.)
 
-- Squelch redesign around RF power (plan steps 3–4).
+- Step 4 handheld test of the RF squelch (whip outdoors).
+- **Faster scanning:** keep the dongle open and retune instead of restarting
+  rtl_sdr per hop (rtl_tcp or pyrtlsdr). RF squelch decides in ~60 ms, so a
+  5-channel cycle could drop from ~9 s to ~1–2 s.
 - **Boat electrical noise (2026-09-30):** on shore power, a ch71 radio check
   from Nava's own VHF had a "wicked hum" on the transmitted audio; hum went
   away when shore power was killed (some static remained). Wi-Fi camera and
@@ -216,7 +241,9 @@ here until issues are set up.)
   shell history and a token (never pushed; token revoked).
 - Never commit secrets; `.env` is gitignored.
 - Only one process may use the RTL-SDR dongle — always go through
-  `channel_manager`, never spawn `rtl_fm` directly.
+  `channel_manager`, never spawn `rtl_fm`/`rtl_sdr` directly. For ad-hoc
+  measurements (rtl_power etc.) first check `GET /radio/status` is `idle`
+  and no `rtl_*` process is running — Kevin may be listening.
 - webrtcvad needs exact 10/20/30 ms frames at 8/16/32/48 kHz.
 - Kevin is the boat owner and sole user, usually connecting from a phone
   over the tunnel. Give step-by-step instructions for anything Kevin must run.

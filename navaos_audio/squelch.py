@@ -24,6 +24,7 @@ from __future__ import annotations
 import collections
 import time
 from dataclasses import dataclass
+from typing import Optional
 
 import numpy as np
 
@@ -36,6 +37,7 @@ from .config import ChannelConfig
 
 
 _NOISE_FLOOR_MIN_HISTORY = 10  # frames NoiseFloorEstimator needs before its floor is trustworthy
+_RF_WARMUP_FRAMES = 3  # skip rtl_sdr startup samples after a (re)tune; RF SNR needs no history
 
 
 def _rms_dbfs(samples: np.ndarray) -> float:
@@ -110,7 +112,13 @@ class AdaptiveSquelch:
         self._noise_floor.percentile = config.noise_floor_percentile
         self._cfg = config
 
-    def process(self, frame: np.ndarray, sample_rate: int) -> np.ndarray:
+    def process(
+        self, frame: np.ndarray, sample_rate: int, rf_snr_db: Optional[float] = None
+    ) -> np.ndarray:
+        """Gate one PCM frame. When the receiver supplies `rf_snr_db` (IQ
+        receiver), the open/close decision is carrier-based: RF power vs. the
+        band noise floor, with hysteresis. Without it (legacy rtl_fm) it
+        falls back to VAD + audio level above an adaptive floor."""
         cfg = self._cfg
         now = time.monotonic()
 
@@ -120,7 +128,14 @@ class AdaptiveSquelch:
 
         is_speech = None
         above_floor = None
-        if cfg.squelch_enabled:
+        if cfg.squelch_enabled and rf_snr_db is not None:
+            if self._frames_seen <= _RF_WARMUP_FRAMES:
+                speech_confirmed = False
+            else:
+                threshold = cfg.rf_close_threshold_db if self._state.open else cfg.rf_open_threshold_db
+                above_floor = rf_snr_db >= threshold
+                speech_confirmed = above_floor
+        elif cfg.squelch_enabled:
             if self._frames_seen <= _NOISE_FLOOR_MIN_HISTORY:
                 # NoiseFloorEstimator hasn't seen enough real frames yet to
                 # replace its hardcoded initial guess - force closed rather
@@ -155,8 +170,8 @@ class AdaptiveSquelch:
         # TEMPORARY DEBUG - remove after the scan false-lock investigation.
         print(
             f"SQUELCH-DEBUG ch={cfg.channel} frame_dbfs={frame_dbfs:.1f} "
-            f"floor={floor:.1f} is_speech={is_speech} above_floor={above_floor} "
-            f"open={self._state.open}",
+            f"floor={floor:.1f} rf_snr={'-' if rf_snr_db is None else f'{rf_snr_db:.1f}'} "
+            f"is_speech={is_speech} above_floor={above_floor} open={self._state.open}",
             flush=True,
         )
 

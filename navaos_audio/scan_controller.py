@@ -29,7 +29,7 @@ import numpy as np
 
 from .config import ConfigStore, ScanSettings
 from .ffmpeg_encoder import FFmpegEncoder
-from .sdr_receiver import RTLSDRReceiver
+from .iq_receiver import make_receiver
 from .squelch import AdaptiveSquelch
 
 _VAD_FRAME_MS = 20  # webrtcvad supports 10/20/30ms frames only
@@ -166,7 +166,7 @@ class ScanController:
                 self._locked = False
             self._resume_event.clear()
 
-            receiver = RTLSDRReceiver(cfg, self._device_index)
+            receiver = make_receiver(cfg, self._device_index)
             squelch = AdaptiveSquelch(cfg)
             encoder = FFmpegEncoder(cfg)
 
@@ -185,7 +185,10 @@ class ScanController:
             output_thread = threading.Thread(target=pump_encoder_output, daemon=True)
             output_thread.start()
 
-            dwell_start = time.monotonic()
+            # Dwell is timed from the first frame, not from receiver.start():
+            # device open takes ~0.7 s, which used to eat most of a 1 s dwell
+            # and left less listening time than lock_sustain_s needs.
+            dwell_start: Optional[float] = None
             advance = False
             open_since: Optional[float] = None
             quiet_since: Optional[float] = None
@@ -195,6 +198,8 @@ class ScanController:
             try:
                 for pcm_chunk in receiver.read_frames(frame_bytes):
                     got_any_frame = True
+                    if dwell_start is None:
+                        dwell_start = time.monotonic()
                     if self._stop_event.is_set():
                         break
 
@@ -205,7 +210,9 @@ class ScanController:
                     settings = self._settings_store.get()
 
                     frame = np.frombuffer(pcm_chunk, dtype=np.int16)
-                    gated = squelch.process(frame, cfg.sample_rate)
+                    gated = squelch.process(
+                        frame, cfg.sample_rate, rf_snr_db=getattr(receiver, "rf_snr_db", None)
+                    )
                     encoder.write(gated.tobytes())
 
                     now = time.monotonic()
@@ -238,7 +245,8 @@ class ScanController:
                             break
                         continue
 
-                    if (now - dwell_start) > settings.dwell_seconds:
+                    # Don't hop away while the gate is open and a lock is pending.
+                    if open_since is None and (now - dwell_start) > settings.dwell_seconds:
                         advance = True
                         break
                 else:

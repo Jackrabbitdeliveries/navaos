@@ -21,8 +21,20 @@ class ChannelConfig:
     sample_rate: int = 48_000
     rf_gain: float = 49.6
 
+    # Receiver: "iq" (rtl_sdr + in-process demod, gives RF SNR per frame) or
+    # "rtl_fm" (legacy, audio only - squelch falls back to audio mode).
+    receiver: str = "iq"
+    iq_sample_rate: int = 240_000        # must be a multiple of sample_rate
+    iq_offset_hz: float = 50_000.0       # tune this far above the channel to dodge the DC spike
+    rf_channel_half_bw_hz: float = 6_000.0
+
     # Squelch / speech-detection tuning
     squelch_enabled: bool = True
+    # RF squelch (used whenever the receiver supplies rf_snr_db). dB above
+    # the band noise floor; 2026-09-30 boat baseline: quiet ~0 dB, local
+    # traffic +24..+33 dB, NOAA WX ~+10 dB.
+    rf_open_threshold_db: float = 10.0
+    rf_close_threshold_db: float = 6.0
     vad_aggressiveness: int = 2          # webrtcvad 0-3 (0=permissive, 3=aggressive)
     noise_floor_percentile: float = 20.0  # percentile used to track quiet-period energy
     open_threshold_db: float = 6.0       # dB above noise floor required to OPEN squelch
