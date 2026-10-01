@@ -64,14 +64,18 @@ Legacy path (`ChannelConfig.receiver="rtl_fm"`): rtl_fm → AdaptiveSquelch
 - `main.py` — FastAPI app; mounts the single router; shuts down
   `channel_manager` on lifespan exit.
 - `api/stream.py` — all HTTP routes under `/radio`. Channel table `CHANNELS`
-  (display names/freqs, **order = UI order**) lives here. The recordings page
-  HTML is still inline here.
+  (display names/freqs, **order = UI order**) lives here. Pages are rendered by
+  `_render(template)` (substitutes `__CHANNELS__` / `__CHANNEL_ORDER__`).
 - `api/templates/player.html` — the player page (dark nautical theme, 2026-09-30):
   header photo, big channel readout, transport (Stop / Scan↔Join↔Stop scan /
   Resume), channel cards (tap = direct tune, "scan" toggle, ⚙ sensitivity,
   "heard N min ago"), recent-transmissions strip. Plain HTML/JS — `/player`
   substitutes `__CHANNELS__` and `__CHANNEL_ORDER__`. Keep channel order
   explicit: JS `Object.keys` puts "13" etc. before "09".
+- `api/templates/recordings.html` — recordings page, same dark theme/palette
+  as the player (keep the `:root` colour tokens in sync): photo strip header,
+  channel filter chips, Today/Yesterday/date groups, play/pause + tap-to-seek
+  progress bar, download link, signal label (WEAK <15 / GOOD <30 / STRONG dB).
 - `static/` — images served at `/radio/static/<name>` (e.g. `hero.jpg`, the
   player header photo; page falls back to a gradient if it's missing).
 - `navaos_audio/` package:
@@ -298,7 +302,6 @@ here until issues are set up.)
 - Add `requirements.txt` (pin setuptools <81 for webrtcvad).
 - AGC/leveler not implemented.
 - More UI sliders (only RF sensitivity exists; gain/volume/hang time not).
-- Restyle `/radio/recordings/view` to match the new dark player.
 - Header photo `static/hero.jpg` (Bridge of Lions at night, 1125×722) is
   installed **on the Pi only** — it's a third-party photo and the GitHub repo
   is public, so it's in `.gitignore`. Original upload: `~/lionsBridge.jpg`.

@@ -242,99 +242,19 @@ def recording_file(day: str, name: str):
 
 @router.get("/recordings/view")
 def recordings_page():
-    names = {k: v["name"] for k, v in CHANNELS.items()}
-    return HTMLResponse(_RECORDINGS_HTML.replace("__CHANNELS__", json.dumps(names)))
-
-
-_RECORDINGS_HTML = """<!doctype html>
-<html>
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>NavaOS Recordings</title>
-  <style>
-    body { font-family: Arial; padding: 16px; background: #f7f7f7; max-width: 720px; margin: 0 auto; }
-    h1 { margin-bottom: 4px; }
-    a { color: #0b5cad; }
-    #filters { display: flex; flex-wrap: wrap; gap: 6px; margin: 12px 0; }
-    #filters button { padding: 8px 12px; border: 1px solid #aaa; background: white; border-radius: 6px; font-size: 15px; }
-    #filters button.active { background: #0b5cad; color: white; border-color: #0b5cad; }
-    .day { margin-top: 18px; font-weight: bold; color: #444; border-bottom: 1px solid #ccc; padding-bottom: 4px; }
-    .clip { background: white; border: 1px solid #ddd; border-radius: 6px; padding: 10px; margin-top: 8px; }
-    .meta { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 15px; margin-bottom: 6px; }
-    .time { font-weight: bold; }
-    .weak { color: #b26a00; } .ok { color: #2e7d32; }
-    audio { width: 100%; }
-    #summary { color: #555; font-size: 14px; }
-  </style>
-</head>
-<body>
-  <h1>Recordings</h1>
-  <div><a href="/radio/player">&larr; Back to player</a></div>
-  <div id="filters"></div>
-  <div id="summary">Loading&hellip;</div>
-  <div id="list"></div>
-<script>
-  const channels = __CHANNELS__;
-  let filter = null;
-
-  function snrLabel(db) {
-    if (db === null) return "";
-    const cls = db < 15 ? "weak" : "ok";
-    const word = db < 15 ? "weak" : (db < 30 ? "good" : "strong");
-    return `<span class="${cls}">signal +${db} dB (${word})</span>`;
-  }
-
-  function renderFilters() {
-    const el = document.getElementById("filters");
-    const keys = [null, ...Object.keys(channels)];
-    el.innerHTML = keys.map(k =>
-      `<button class="${k === filter ? "active" : ""}" data-k="${k ?? ""}">${k === null ? "All" : "Ch " + k}</button>`
-    ).join("");
-    el.querySelectorAll("button").forEach(b => b.onclick = () => {
-      filter = b.dataset.k || null; renderFilters(); load();
-    });
-  }
-
-  async function load() {
-    const url = "/radio/recordings?limit=1000" + (filter ? "&channel=" + filter : "") + "&x=" + Date.now();
-    const clips = await (await fetch(url)).json();
-    const total = clips.reduce((a, c) => a + c.duration_s, 0);
-    document.getElementById("summary").innerText =
-      clips.length ? `${clips.length} transmissions, ${Math.round(total)} s total (kept 30 days)` : "No recordings yet.";
-    let html = "", day = "";
-    for (const c of clips) {
-      const d = c.time.slice(0, 10);
-      if (d !== day) { day = d; html += `<div class="day">${d}</div>`; }
-      html += `<div class="clip"><div class="meta">
-          <span class="time">${c.time.slice(11)}</span>
-          <span>${channels[c.channel] || "Ch " + c.channel}</span>
-          <span>${c.duration_s.toFixed(1)} s</span>
-          ${snrLabel(c.peak_rf_snr_db)}
-        </div>
-        <audio controls preload="none" src="/radio/recordings/file/${c.path}"></audio></div>`;
-    }
-    document.getElementById("list").innerHTML = html;
-  }
-
-  function playing() {
-    return [...document.querySelectorAll("audio")].some(a => !a.paused);
-  }
-
-  renderFilters();
-  load();
-  // Pick up new transmissions, but never yank the list out from under a clip that's playing.
-  setInterval(() => { if (!playing()) load(); }, 30000);
-</script>
-</body>
-</html>
-"""
+    return HTMLResponse(_render("recordings.html"))
 
 
 # ---- player page ------------------------------------------------------
 
+def _render(template: str) -> str:
+    """Pages are plain HTML in api/templates/, read per request (edits need no
+    restart), with the channel table substituted in."""
+    html = (_TEMPLATES / template).read_text()
+    html = html.replace("__CHANNEL_ORDER__", json.dumps(list(CHANNELS)))
+    return html.replace("__CHANNELS__", json.dumps(CHANNELS))
+
+
 @router.get("/player")
 def player():
-    html = (_TEMPLATES / "player.html").read_text()
-    html = html.replace("__CHANNEL_ORDER__", json.dumps(list(CHANNELS)))
-    return HTMLResponse(html.replace("__CHANNELS__", json.dumps(CHANNELS)))
+    return HTMLResponse(_render("player.html"))
