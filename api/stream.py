@@ -20,13 +20,17 @@ router = APIRouter(prefix="/radio", tags=["radio"])
 
 # Display metadata for the player page. Frequencies/keys themselves live in
 # navaos_audio.channel_manager (the single source of truth for the hardware
-# layer) - this is presentation only.
+# layer) - this is presentation only. "monitored_by" = shore stations that
+# listen on the channel (shown as tags on the player cards).
 CHANNELS = {
     "09": {"mhz": "156.450 MHz", "name": "Channel 09 - Bridge of Lions"},
     "13": {"mhz": "156.650 MHz", "name": "Channel 13 - Bridge-to-Bridge"},
     "16": {"mhz": "156.800 MHz", "name": "Channel 16 - Distress / Calling"},
     "68": {"mhz": "156.425 MHz", "name": "Channel 68"},
-    "71": {"mhz": "156.575 MHz", "name": "Channel 71"},
+    "69": {"mhz": "156.475 MHz", "name": "Channel 69",
+           "monitored_by": ["Comachee Cove Yacht Harbor", "Conch House Marina Resort"]},
+    "71": {"mhz": "156.575 MHz", "name": "Channel 71",
+           "monitored_by": ["St. Augustine Municipal Marina"]},
     "72": {"mhz": "156.625 MHz", "name": "Channel 72 - St. Augustine Cruisers Net"},
     "wx": {"mhz": "162.425 MHz", "name": "NOAA Weather WX4"},
 }

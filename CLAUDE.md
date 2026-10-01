@@ -150,7 +150,7 @@ Legacy path (`ChannelConfig.receiver="rtl_fm"`): rtl_fm → AdaptiveSquelch
     → 429. Streams only serve the selected channel (409 otherwise).
     **Default mode:** after 20 min with no activity (no control/settings
     request and nobody listening; the clock starts when the last listener
-    stops) the radio returns to scanning `DEFAULT_SCAN_ORDER` (09/13/16/68/71/72 —
+    stops) the radio returns to scanning `DEFAULT_SCAN_ORDER` (09/13/16/68/69/71/72 —
     WX excluded, it never stops transmitting). A running scan is left alone,
     even a custom list. Also starts 30 s after service start (reboot-safe).
     ⚠️ **Tests / spare dev instances must set `NAVAOS_DEFAULT_SCAN=0`** —
@@ -165,7 +165,7 @@ Legacy path (`ChannelConfig.receiver="rtl_fm"`): rtl_fm → AdaptiveSquelch
     follows the turn/queue rules; tune/scan/stop stop it.
   - `channel_manager.py` — **the single hardware arbiter**: only one session
     (direct tune OR scan) may own the dongle; conflicts → HTTP 409.
-    `DEFAULT_SCAN_ORDER = ["09", "13", "16", "68", "71", "72"]`.
+    `DEFAULT_SCAN_ORDER = ["09", "13", "16", "68", "69", "71", "72"]`.
 - `docs/HANDOFF.md` — original July design brief. Useful background, but
   **partly stale** (integration steps are done; IPv4 and scan-lock notes are
   outdated). This file supersedes it.
@@ -200,7 +200,8 @@ are **in memory only — lost on service restart.**
 | 13 | 156.650 MHz | Bridge-to-bridge |
 | 16 | 156.800 MHz | Distress / calling |
 | 68 | 156.425 MHz | |
-| 71 | 156.575 MHz | |
+| 69 | 156.475 MHz | Monitored by Comachee Cove Yacht Harbor, Conch House Marina Resort (added 2026-10-01) |
+| 71 | 156.575 MHz | Monitored by St. Augustine Municipal Marina |
 | 72 | 156.625 MHz | St. Augustine Cruisers Net (added 2026-10-01) |
 | wx | 162.425 MHz | NOAA WX4 — continuous but weak here (~+10 dB); the only WX station received. Good weak-signal test |
 
@@ -406,7 +407,8 @@ disable them for the screenshot.
   shell history and a token (never pushed; token revoked).
 - Never commit secrets; `.env` is gitignored.
 - Adding a channel: `CHANNEL_FREQUENCIES_HZ` + `DEFAULT_SCAN_ORDER`
-  (channel_manager.py), `CHANNELS` (api/stream.py, display + UI order),
+  (channel_manager.py), `CHANNELS` (api/stream.py, display + UI order + optional `monitored_by` list,
+  shown as tags on player cards/readout),
   `CHANNELS_HZ` (noise_meter.py, if inside 156.3–156.9 MHz), tools/rf_baseline.py.
 - Only one process may use the RTL-SDR dongle — always go through
   `channel_manager`, never spawn `rtl_fm`/`rtl_sdr` directly. For ad-hoc
