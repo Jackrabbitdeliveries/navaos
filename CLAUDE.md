@@ -21,9 +21,16 @@ scan) from a phone/browser anywhere.
 - Remote access: Cloudflare Tunnel (`cloudflared` service) — `ssh.nnwx.com`
   for SSH, `vhf.nnwx.com` for the web app. No port forwarding.
 - **Location (since 2026-09-30 evening): at Kevin's home, not on the boat.**
-  Moved home because of recurring problems aboard. Wired Ethernet (`eth0`,
-  DHCP 10.0.0.x) to an Xfinity router; IPv4 + IPv6 both work. Tailscale is
-  also installed (`tailscale0`). Antenna/cable: **same whip + cable as on the boat**, indoors in front of a window.
+  Moved home because of recurring problems aboard. **Since 2026-10-01 on
+  WiFi** (NetworkManager connection "Elsie", 2.4 GHz ch 11, DHCP 10.0.0.252,
+  autoconnect) so the Pi can live in a weatherproof box outside nearer the
+  antenna — use a plastic box (metal blocks WiFi). Ethernet (`eth0`, .251)
+  still works as a preferred fallback if plugged in (metric 100 vs 600).
+  WiFi country set to US; to pin 2.4 GHz: `sudo nmcli connection modify
+  "Elsie" 802-11-wireless.band bg`. Cable-to-WiFi switchover verified (tunnel
+  and SSH came back over WiFi). Tailscale is also installed (`tailscale0`).
+- **Run Claude Code inside tmux** (`tmux new -A -s claude`): sessions started
+  directly in an SSH shell die whenever the SSH connection drops. Antenna/cable: **same whip + cable as on the boat**, indoors in front of a window.
 - On the boat it was on Verizon LTE (IPv4 flaky in July) with a new outdoor
   VHF antenna ~6 ft above deck (late Sep 2026).
 - RF numbers below were measured **on the boat**; they don't transfer to the
