@@ -314,7 +314,11 @@ metric = (8–16 kHz energy) − (0.3–3 kHz energy):
   roof below).** Correction: the morning clips (ch09 16 clips 05:58–08:33 at
   +13…+17 dB, ch16 3 clips +13…+19) were recorded **before** the move, with
   the whip still indoors at the window — the indoor spot does hear bridge
-  traffic; last night was just quiet. Only ch68 10:49 (+11) is post-move.
+  traffic; last night was just quiet. Post-move: ch68 10:49 (+11); ch71
+  11:47 (7.4 s, peak +12.6) and 11:48 (14.5 s, opened and peaked +10.8) —
+  distant traffic (not Kevin's handheld), "loud and clear" per Kevin despite
+  being just over the +10 open threshold; vs the boat's quieter floor these
+  would read ~+18–20.
   rtl_power 10:55: NOAA WX4 162.425 now +3 dB (was 0), 162.400 +2 (both
   below squelch). FM broadcast strongest +27 dB (was +18) but individual
   stations ±9 dB — the marine whip is off-resonance at FM, poor yardstick.
