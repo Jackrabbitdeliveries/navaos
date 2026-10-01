@@ -299,7 +299,11 @@ here until issues are set up.)
 - AGC/leveler not implemented.
 - More UI sliders (only RF sensitivity exists; gain/volume/hang time not).
 - Restyle `/radio/recordings/view` to match the new dark player.
-- Header photo: Kevin has a Bridge of Lions night photo → `static/hero.jpg`.
+- Header photo `static/hero.jpg` (Bridge of Lions at night, 1125×722) is
+  installed **on the Pi only** — it's a third-party photo and the GitHub repo
+  is public, so it's in `.gitignore`. Original upload: `~/lionsBridge.jpg`.
+  Re-copy it if the repo is ever re-cloned. Template/static changes need no
+  restart (read per request).
 
 ### Previewing pages (no browser tools in this setup)
 Headless Chromium works for screenshots but has **no network** from the

@@ -5,3 +5,6 @@ venv/
 *.log
 .env
 *.mp3
+
+# Header photo: third-party image, kept on the Pi only (repo is public)
+static/hero.jpg

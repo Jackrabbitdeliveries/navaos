@@ -33,10 +33,12 @@
     /* ---- header photo ---- */
     .hero {
       position: relative;
-      height: 190px;
+      height: clamp(240px, 42vw, 300px);
+      max-width: 640px;
+      margin: 0 auto;
       background:
-        linear-gradient(180deg, rgba(7,17,31,0.15) 0%, rgba(7,17,31,0.55) 60%, var(--bg) 100%),
-        url("/radio/static/hero.jpg") center 60% / cover no-repeat,
+        linear-gradient(180deg, rgba(7,17,31,0) 0%, rgba(7,17,31,0.1) 45%, rgba(7,17,31,0.75) 82%, var(--bg) 100%),
+        url("/radio/static/hero.jpg") center 4% / cover no-repeat,
         radial-gradient(ellipse at 70% 20%, #1b3b6b 0%, #0b1d3a 45%, var(--bg) 100%);
     }
     .hero-bar {
