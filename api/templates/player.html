@@ -48,6 +48,10 @@
     }
     .brand { font-size: 26px; font-weight: 800; letter-spacing: 0.06em; text-shadow: 0 2px 12px rgba(0,0,0,0.6); }
     .brand small { display: block; font-size: 12px; font-weight: 600; letter-spacing: 0.18em; color: var(--muted); }
+    .brand .place, .title .place {
+      display: block; font-size: 11px; font-weight: 700; letter-spacing: 0.2em;
+      color: var(--cyan); margin-bottom: 4px; text-shadow: 0 1px 8px rgba(0,0,0,0.8);
+    }
     .brand small.tagline, .title small.tagline { font-style: italic; letter-spacing: 0.03em; font-size: 13px; font-weight: 500; color: #b9c8da; margin-top: 3px; }
     .pill {
       font-family: var(--mono); font-size: 12px; font-weight: 700; letter-spacing: 0.12em;
@@ -153,7 +157,7 @@
 <body>
   <div class="hero">
     <div class="hero-bar">
-      <div class="brand">⚓ NAVA VHF<small class="tagline">Live from onboard SV Nava</small></div>
+      <div class="brand"><span class="place">ST. AUGUSTINE, FL</span>⚓ NAVA VHF<small class="tagline">Live from onboard SV Nava</small></div>
       <div id="pill" class="pill">IDLE</div>
     </div>
   </div>
