@@ -161,6 +161,8 @@
       background: transparent; color: var(--cyan); font-size: 14px; cursor: pointer;
     }
     .clip.playing .clip-play { background: var(--cyan); color: var(--bg); }
+    .clip-dot { flex: none; width: 8px; height: 8px; border-radius: 50%; margin-right: -2px; }
+    .clip.unheard .clip-dot { background: var(--cyan); }
     .clip-main { flex: 1; min-width: 0; }
     .clip-title { font-size: 14px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .clip-sub { font-size: 12px; color: var(--muted); margin-top: 2px; }
@@ -358,7 +360,8 @@
       const el = document.getElementById("clips");
       if (!clips.length) { el.innerHTML = '<div class="empty">No transmissions recorded yet.</div>'; return; }
       el.innerHTML = clips.map(c => `
-        <div class="clip" data-src="/radio/recordings/file/${c.path}">
+        <div class="clip${c.listened === false ? " unheard" : ""}" data-src="/radio/recordings/file/${c.path}" data-path="${c.path}">
+          <span class="clip-dot"></span>
           <button class="clip-play" onclick="playClip(this)">▶</button>
           <div class="clip-main">
             <div class="clip-title">Ch ${label(c.channel)}${shortName(c.channel) ? " · " + shortName(c.channel) : ""}</div>
@@ -378,7 +381,20 @@
     clipAudio.src = src;
     clipAudio.play().then(() => { row.classList.add("playing"); btn.innerText = "❚❚"; }).catch(() => {});
   }
-  clipAudio.onended = () => document.querySelectorAll(".clip").forEach(r => { r.classList.remove("playing"); r.querySelector(".clip-play").innerText = "▶"; });
+  // Played to the end = heard (shared with the recordings page).
+  function markHeard(row) {
+    if (!row || !row.classList.contains("unheard")) return;
+    row.classList.remove("unheard");
+    fetch("/radio/recordings/listened", { method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ paths: [row.dataset.path] }) }).catch(() => {});
+  }
+  clipAudio.ontimeupdate = () => {
+    if (clipAudio.duration && clipAudio.currentTime / clipAudio.duration >= 0.9) markHeard(document.querySelector(".clip.playing"));
+  };
+  clipAudio.onended = () => {
+    markHeard(document.querySelector(".clip.playing"));
+    document.querySelectorAll(".clip").forEach(r => { r.classList.remove("playing"); r.querySelector(".clip-play").innerText = "▶"; });
+  };
 
   // ---------- talking to the shared radio ----------
 

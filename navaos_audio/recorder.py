@@ -21,10 +21,12 @@ Env overrides: NAVAOS_RECORDINGS_DIR, NAVAOS_RECORDING=0 to disable.
 from __future__ import annotations
 
 import datetime as _dt
+import json
 import os
 import re
 import shutil
 import subprocess
+import threading
 from pathlib import Path
 from typing import Optional
 
@@ -164,9 +166,44 @@ class TransmissionRecorder:
             pass
 
 
+# ---- "listened" marks ---------------------------------------------------------
+# One shared set for everyone (so Kevin's phone and Chromebook agree), stored
+# beside the clips. Keys are the clip paths ("YYYY-MM-DD/name.mp3").
+
+_listened_lock = threading.Lock()
+
+
+def _listened_file(base_dir: Path) -> Path:
+    return Path(base_dir) / ".listened.json"
+
+
+def load_listened(base_dir: Path = RECORDINGS_DIR) -> set[str]:
+    try:
+        return set(json.loads(_listened_file(base_dir).read_text()))
+    except (OSError, ValueError):
+        return set()
+
+
+def mark_listened(paths: list[str], listened: bool = True, base_dir: Path = RECORDINGS_DIR) -> int:
+    """Mark clips heard/unheard. Unknown or invalid paths are ignored, and
+    marks for clips pruned by retention are dropped. Returns how many valid
+    paths were applied."""
+    valid = [p for p in paths if "/" in p and resolve_recording(*p.split("/", 1), base_dir=base_dir)]
+    with _listened_lock:
+        heard = load_listened(base_dir)
+        heard = heard | set(valid) if listened else heard - set(valid)
+        heard = {p for p in heard if (Path(base_dir) / p).is_file()}
+        f = _listened_file(base_dir)
+        tmp = f.with_suffix(".tmp")
+        tmp.write_text(json.dumps(sorted(heard)))
+        tmp.replace(f)
+    return len(valid)
+
+
 def list_recordings(base_dir: Path = RECORDINGS_DIR, channel: Optional[str] = None, limit: int = 500) -> list[dict]:
     """Newest-first clip metadata, parsed from filenames."""
     out: list[dict] = []
+    heard = load_listened(base_dir)
     base = Path(base_dir)
     if not base.is_dir():
         return out
@@ -187,6 +224,7 @@ def list_recordings(base_dir: Path = RECORDINGS_DIR, channel: Optional[str] = No
                 "duration_s": float(m["dur"]),
                 "peak_rf_snr_db": None if m["snr"] == "na" else int(m["snr"]),
                 "bytes": f.stat().st_size,
+                "listened": f"{day.name}/{f.name}" in heard,
             })
             if len(out) >= limit:
                 return out

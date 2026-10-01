@@ -10,7 +10,7 @@ from pydantic import BaseModel
 from navaos_audio.channel_manager import channel_manager, SessionConflictError
 from navaos_audio.control import ControlError, control
 from navaos_audio import noise_meter as nm
-from navaos_audio.recorder import last_heard, list_recordings, resolve_recording
+from navaos_audio.recorder import last_heard, list_recordings, mark_listened, resolve_recording
 
 _TEMPLATES = Path(__file__).parent / "templates"
 _STATIC = Path(__file__).resolve().parent.parent / "static"
@@ -311,6 +311,17 @@ def noise_page():
 def recordings(channel: str | None = None, limit: int = 500):
     """Saved transmissions, newest first (see navaos_audio/recorder.py)."""
     return list_recordings(channel=channel.lower() if channel else None, limit=min(limit, 5000))
+
+
+class ListenedRequest(BaseModel):
+    paths: list[str]
+    listened: bool = True
+
+
+@router.post("/recordings/listened")
+def recordings_listened(req: ListenedRequest):
+    """Mark clips heard (or unheard). Shared across everyone, not per device."""
+    return {"updated": mark_listened(req.paths[:5000], req.listened)}
 
 
 @router.get("/recordings/last-heard")

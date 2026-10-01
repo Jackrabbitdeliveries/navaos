@@ -84,8 +84,16 @@ Legacy path (`ChannelConfig.receiver="rtl_fm"`): rtl_fm → AdaptiveSquelch
   the user paused. The PIN, once used, is remembered in localStorage.
 - `api/templates/recordings.html` — recordings page, same dark theme/palette
   as the player (keep the `:root` colour tokens in sync): photo strip header,
-  channel filter chips, Today/Yesterday/date groups, play/pause + tap-to-seek
-  progress bar, download link, signal label (WEAK <15 / GOOD <30 / STRONG dB).
+  channel filter chips + UNHEARD chip, Today/Yesterday/date groups of
+  **conversations** (same channel, ≤120 s between one transmission's end and
+  the next's start; lone transmissions render as one compact row), unread
+  badge + cyan dots, ▶ Play conversation = WhatsApp-style, from the oldest
+  unheard clip straight through; per-clip play, tap-to-seek, download,
+  signal label (WEAK <15 / GOOD <30 / STRONG dB), "Mark all heard".
+  A clip counts as **heard** once played to ≥90%. Heard marks are **shared**
+  (not per device) in `~/navaos-data/recordings/.listened.json`;
+  `POST /recordings/listened {paths, listened}`; `/recordings` has `listened`.
+  The player's recent strip shows the same dots and marks on play-through.
 - `api/templates/noise.html` — antenna noise meter page: hero figure (dB
   above dongle floor, Quiet ≤2 / Some noise ≤5 / Noisy), meter bar, 5-min
   line chart with reference line + crosshair tooltip, per-channel bars,

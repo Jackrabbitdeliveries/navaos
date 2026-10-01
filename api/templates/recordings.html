@@ -65,7 +65,44 @@
       margin: 22px 2px 8px; display: flex; justify-content: space-between;
     }
     .day span:last-child { letter-spacing: 0.05em; font-weight: 600; }
-    .clips { display: flex; flex-direction: column; gap: 6px; }
+    .clips { display: flex; flex-direction: column; gap: 8px; }
+
+    /* conversation card: same-channel transmissions close together */
+    .convo { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }
+    .convo.active { border-color: var(--cyan); box-shadow: 0 0 14px rgba(79,209,255,0.18); }
+    .convo-head { display: flex; align-items: center; gap: 10px; padding: 10px; }
+    .convo-play {
+      flex: none; width: 44px; height: 44px; border-radius: 50%; border: 1px solid var(--cyan);
+      background: transparent; color: var(--cyan); font-size: 15px; cursor: pointer;
+    }
+    .convo.active .convo-play { background: var(--cyan); color: var(--bg); }
+    .convo-main { flex: 1; min-width: 0; }
+    .convo-title { font-size: 15px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .convo-sub { font-size: 12px; color: var(--muted); margin-top: 2px; }
+    /* a lone transmission: one compact row instead of header + row */
+    .convo.single .convo-head { display: none; }
+    .convo.single .msgs { border-top: none; }
+    .convo.single .clip { padding: 9px 10px 9px 12px; }
+    .convo.single .clip-play { width: 40px; height: 40px; font-size: 14px; }
+    .clip-title .ch { font-weight: 700; margin-right: 6px; }
+    .clip-meta { font-size: 12px; color: var(--muted); margin-top: 2px; }
+    .badge { flex: none; min-width: 22px; height: 22px; padding: 0 7px; border-radius: 11px; background: var(--cyan);
+             color: var(--bg); font-size: 12px; font-weight: 800; display: inline-flex; align-items: center; justify-content: center; }
+    .badge[hidden] { display: none; }
+    .msgs { border-top: 1px solid var(--line); }
+    .msgs .clip { border: none; border-radius: 0; background: transparent; border-top: 1px solid rgba(31,59,96,0.5); padding: 7px 10px 7px 12px; }
+    .msgs .clip:first-child { border-top: none; }
+    .msgs .clip.playing { box-shadow: none; background: rgba(79,209,255,0.06); }
+    .msgs .clip-play { width: 32px; height: 32px; font-size: 12px; }
+    .dot { flex: none; width: 8px; height: 8px; border-radius: 50%; background: transparent; }
+    .clip.unheard .dot { background: var(--cyan); }
+    .clip.unheard .clip-title { color: var(--text); }
+    .clip:not(.unheard) .clip-title { color: #b9c8da; font-weight: 500; }
+    .chip.unheard-chip { margin-left: auto; }
+    .summary-row { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin: 6px 2px 0; }
+    .summary-row .summary { margin: 0; }
+    .linkbtn { font: inherit; font-size: 13px; color: var(--cyan); background: none; border: none; cursor: pointer; padding: 0; white-space: nowrap; }
+    .linkbtn[hidden] { display: none; }
     .clip { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 8px 10px; }
     .clip.playing { border-color: var(--cyan); box-shadow: 0 0 14px rgba(79,209,255,0.18); }
     .clip-row { display: flex; align-items: center; gap: 10px; }
@@ -104,7 +141,10 @@
 
   <div class="wrap">
     <div id="filters" class="filters"></div>
-    <div id="summary" class="summary">Loading…</div>
+    <div class="summary-row">
+      <div id="summary" class="summary">Loading…</div>
+      <button id="markAll" class="linkbtn" onclick="markAllHeard()" hidden>Mark all heard</button>
+    </div>
     <div id="list"></div>
   </div>
 
@@ -114,8 +154,12 @@
   const channels = __CHANNELS__;
   const channelOrder = __CHANNEL_ORDER__;   // explicit: Object.keys() would sort "13" before "09"
   const clipAudio = document.getElementById("clipAudio");
+  const CONVO_GAP_S = 120;   // same channel, next transmission starts within 2 min of the last one ending
   let filter = null;
-  let playingSrc = null;
+  let unheardOnly = false;
+  let clips = [];             // newest-first from the server
+  let queue = [];             // paths still to play, in order
+  let playingPath = null;
 
   function label(key) { return key === "wx" ? "WX" : key; }
   function shortName(key) {
@@ -145,95 +189,226 @@
   }
 
   function renderFilters() {
-    const keys = [null, ...channelOrder];
     const el = document.getElementById("filters");
-    el.innerHTML = keys.map(k =>
-      `<button class="chip ${k === filter ? "active" : ""}" data-k="${k ?? ""}">${k === null ? "ALL" : label(k)}</button>`
-    ).join("");
-    el.querySelectorAll(".chip").forEach(b => b.onclick = () => {
-      filter = b.dataset.k || null; renderFilters(); load();
-    });
+    el.replaceChildren();
+    for (const k of [null, ...channelOrder]) {
+      const b = document.createElement("button");
+      b.className = "chip" + (k === filter ? " active" : "");
+      b.textContent = k === null ? "ALL" : label(k);
+      b.onclick = () => { filter = k; renderFilters(); load(); };
+      el.appendChild(b);
+    }
+    const u = document.createElement("button");
+    const n = clips.filter(c => !c.listened).length;
+    u.className = "chip unheard-chip" + (unheardOnly ? " active" : "");
+    u.textContent = "UNHEARD" + (n ? " " + n : "");
+    u.onclick = () => { unheardOnly = !unheardOnly; renderFilters(); render(); };
+    el.appendChild(u);
   }
 
   async function load() {
     const url = "/radio/recordings?limit=1000" + (filter ? "&channel=" + filter : "") + "&x=" + Date.now();
-    let clips;
     try { clips = await (await fetch(url)).json(); } catch (e) { return; }
-    const total = clips.reduce((a, c) => a + c.duration_s, 0);
-    const mins = total >= 60 ? Math.floor(total / 60) + " min " + Math.round(total % 60) + " s" : Math.round(total) + " s";
-    document.getElementById("summary").innerText = clips.length
-      ? `${clips.length} transmission${clips.length === 1 ? "" : "s"} · ${mins} of audio · kept 30 days`
-      : "";
+    renderFilters();
+    render();
+  }
 
-    if (!clips.length) {
-      document.getElementById("list").innerHTML =
-        `<div class="empty">No transmissions recorded${filter ? " on " + label(filter) : ""} yet.<br>
-         They appear here automatically whenever the squelch opens.</div>`;
+  // Group into conversations: oldest -> newest, same channel and day, a gap of
+  // at most CONVO_GAP_S between one transmission's end and the next's start.
+  function conversations(list) {
+    const asc = [...list].sort((a, b) => a.ts - b.ts);
+    const out = [];
+    for (const c of asc) {
+      const cur = out[out.length - 1];
+      const prev = cur && cur.clips[cur.clips.length - 1];
+      if (prev && prev.channel === c.channel && prev.time.slice(0, 10) === c.time.slice(0, 10)
+          && c.ts - (prev.ts + prev.duration_s) <= CONVO_GAP_S) cur.clips.push(c);
+      else out.push({ channel: c.channel, clips: [c] });
+    }
+    return out.reverse();   // newest conversation first
+  }
+
+  function fmtDur(s) { s = Math.round(s); return s >= 60 ? Math.floor(s / 60) + " min " + (s % 60) + " s" : s + " s"; }
+  function srcOf(path) { return "/radio/recordings/file/" + path; }
+  function el(tag, cls, text) { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; }
+
+  function render() {
+    const list = document.getElementById("list");
+    const total = clips.reduce((a, c) => a + c.duration_s, 0);
+    const unheard = clips.filter(c => !c.listened);
+    document.getElementById("summary").textContent = clips.length
+      ? `${clips.length} transmission${clips.length === 1 ? "" : "s"} · ${fmtDur(total)} · ${unheard.length} unheard`
+      : "";
+    document.getElementById("markAll").hidden = !unheard.length;
+
+    let convos = conversations(clips);
+    if (unheardOnly) convos = convos.filter(cv => cv.clips.some(c => !c.listened));
+    list.replaceChildren();
+    if (!convos.length) {
+      const e = el("div", "empty");
+      e.textContent = unheardOnly ? "You're all caught up - nothing unheard." :
+        `No transmissions recorded${filter ? " on " + label(filter) : ""} yet. They appear here automatically whenever the squelch opens.`;
+      list.appendChild(e);
       return;
     }
 
-    // group by day, keeping newest-first order
-    const days = [];
-    for (const c of clips) {
-      const d = c.time.slice(0, 10);
-      if (!days.length || days[days.length - 1].day !== d) days.push({ day: d, clips: [] });
-      days[days.length - 1].clips.push(c);
+    let day = null, box = null;
+    for (const cv of convos) {
+      const first = cv.clips[0], last = cv.clips[cv.clips.length - 1];
+      const d = first.time.slice(0, 10);
+      if (d !== day) {
+        day = d;
+        const n = convos.filter(x => x.clips[0].time.slice(0, 10) === d).length;
+        const h = el("div", "day"); h.append(el("span", null, dayLabel(d)), el("span", null, n + (n === 1 ? " conversation" : " conversations")));
+        list.appendChild(h);
+        box = el("div", "clips"); list.appendChild(box);
+      }
+      const card = el("div", "convo");
+      card.dataset.paths = JSON.stringify(cv.clips.map(c => c.path));
+
+      const head = el("div", "convo-head");
+      const play = el("button", "convo-play", "▶");
+      play.title = "Play conversation";
+      play.onclick = () => playConversation(card);
+      const main = el("div", "convo-main");
+      const name = shortName(cv.channel);
+      main.append(el("div", "convo-title", "Ch " + label(cv.channel) + (name ? " · " + name : "")));
+      const span = first.time.slice(11, 16) + (cv.clips.length > 1 && last.time.slice(11, 16) !== first.time.slice(11, 16) ? "–" + last.time.slice(11, 16) : "");
+      const dur = cv.clips.reduce((a, c) => a + c.duration_s, 0);
+      main.append(el("div", "convo-sub", `${span} · ${cv.clips.length} transmissions · ${fmtDur(dur)} · ${ago(last.ts)}`));
+      const badge = el("span", "badge");
+      head.append(play, main, badge);
+
+      if (cv.clips.length === 1) card.classList.add("single");
+      const msgs = el("div", "msgs");
+      for (const c of cv.clips) msgs.appendChild(clipRow(c, card, cv.clips.length === 1));
+      card.append(head, msgs);
+      box.appendChild(card);
+      updateBadge(card);
     }
-    document.getElementById("list").innerHTML = days.map(g => `
-      <div class="day"><span>${dayLabel(g.day)}</span><span>${g.clips.length}</span></div>
-      <div class="clips">${g.clips.map(c => {
-        const src = "/radio/recordings/file/" + c.path;
-        const name = shortName(c.channel);
-        return `
-        <div class="clip ${src === playingSrc ? "playing" : ""}" data-src="${src}">
-          <div class="clip-row">
-            <button class="clip-play" onclick="togglePlay(this)">${src === playingSrc && !clipAudio.paused ? "❚❚" : "▶"}</button>
-            <div class="clip-main">
-              <div class="clip-title"><span class="t">${c.time.slice(11, 16)}</span>Ch ${label(c.channel)}${name ? " · " + name : ""}</div>
-              <div class="clip-sub">${ago(c.ts)} · ${c.duration_s.toFixed(1)} s</div>
-            </div>
-            <div class="sig ${sigClass(c.peak_rf_snr_db)}">${c.peak_rf_snr_db === null ? "" : "+" + c.peak_rf_snr_db + " dB<small>" + sigWord(c.peak_rf_snr_db) + "</small>"}</div>
-            <a class="dl" href="${src}" download title="Download">⤓</a>
-          </div>
-          <div class="progress" onclick="seek(event, this)"><div class="bar"></div></div>
-        </div>`;
-      }).join("")}</div>`).join("");
+    syncPlayingUI();
   }
 
-  function resetRows() {
+  function clipRow(c, card, standalone) {
+    const row = el("div", "clip" + (c.listened ? "" : " unheard"));
+    row.dataset.path = c.path;
+    const r = el("div", "clip-row");
+    const btn = el("button", "clip-play", "▶");
+    btn.onclick = () => playFrom(card, c.path);
+    const main = el("div", "clip-main");
+    const title = el("div", "clip-title");
+    if (standalone) {
+      const name = shortName(c.channel);
+      title.append(el("span", "ch", "Ch " + label(c.channel)), document.createTextNode(name ? "· " + name : ""));
+      main.append(title, el("div", "clip-meta", `${c.time.slice(11, 19)} · ${c.duration_s.toFixed(1)} s · ${ago(c.ts)}`));
+    } else {
+      title.append(el("span", "t", c.time.slice(11, 19)), document.createTextNode(c.duration_s.toFixed(1) + " s"));
+      main.append(title);
+    }
+    const sig = el("div", "sig " + sigClass(c.peak_rf_snr_db));
+    if (c.peak_rf_snr_db !== null) { sig.textContent = "+" + c.peak_rf_snr_db + " dB"; sig.appendChild(el("small", null, sigWord(c.peak_rf_snr_db))); }
+    const dl = el("a", "dl", "⤓"); dl.href = srcOf(c.path); dl.setAttribute("download", ""); dl.title = "Download";
+    r.append(el("span", "dot"), btn, main, sig, dl);
+    const prog = el("div", "progress"); prog.onclick = ev => seek(ev, prog); prog.appendChild(el("div", "bar"));
+    row.append(r, prog);
+    return row;
+  }
+
+  function updateBadge(card) {
+    const n = card.querySelectorAll(".clip.unheard").length;
+    const b = card.querySelector(".badge");
+    b.textContent = n; b.hidden = !n;
+  }
+
+  // ---------- playback: WhatsApp-style, plays on through the conversation ----------
+
+  function pathsOf(card) { return JSON.parse(card.dataset.paths); }
+  function isHeard(path) { const c = clips.find(x => x.path === path); return c ? c.listened : true; }
+  function cardOf(path) { return [...document.querySelectorAll(".convo")].find(cd => pathsOf(cd).includes(path)); }
+
+  function playConversation(card) {
+    const paths = pathsOf(card);
+    if (playingPath && paths.includes(playingPath)) { togglePause(); return; }
+    const firstUnheard = paths.findIndex(p => !isHeard(p));
+    startQueue(paths.slice(firstUnheard < 0 ? 0 : firstUnheard));
+  }
+
+  function playFrom(card, path) {
+    if (path === playingPath) { togglePause(); return; }
+    const paths = pathsOf(card), i = paths.indexOf(path);
+    // play this one, then carry on through any unheard ones after it
+    startQueue([path, ...paths.slice(i + 1).filter(p => !isHeard(p))]);
+  }
+
+  function togglePause() { if (clipAudio.paused) clipAudio.play().catch(() => {}); else clipAudio.pause(); syncPlayingUI(); }
+
+  function startQueue(paths) { queue = paths.slice(1); playPath(paths[0]); }
+
+  function playPath(path) {
+    playingPath = path;
+    markedThis = false;
+    clipAudio.src = srcOf(path);
+    clipAudio.play().catch(() => {});
+    syncPlayingUI();
+    const row = document.querySelector(`.clip[data-path="${CSS.escape(path)}"]`);
+    if (row) row.scrollIntoView({ block: "nearest", behavior: "smooth" });
+  }
+
+  function syncPlayingUI() {
     document.querySelectorAll(".clip").forEach(r => {
-      r.classList.remove("playing");
-      r.querySelector(".clip-play").innerText = "▶";
-      r.querySelector(".bar").style.width = "0";
+      const on = r.dataset.path === playingPath;
+      r.classList.toggle("playing", on);
+      r.querySelector(".clip-play").textContent = on && !clipAudio.paused ? "❚❚" : "▶";
+      if (!on) r.querySelector(".bar").style.width = "0";
+    });
+    const active = playingPath ? cardOf(playingPath) : null;
+    document.querySelectorAll(".convo").forEach(cd => {
+      const on = cd === active;
+      cd.classList.toggle("active", on);
+      cd.querySelector(".convo-play").textContent = on && !clipAudio.paused ? "❚❚" : "▶";
     });
   }
 
-  function togglePlay(btn) {
-    const row = btn.closest(".clip");
-    const src = row.dataset.src;
-    if (src === playingSrc) {
-      if (clipAudio.paused) { clipAudio.play(); btn.innerText = "❚❚"; }
-      else { clipAudio.pause(); btn.innerText = "▶"; }
-      return;
+  let markedThis = false;
+  async function markHeard(paths) {
+    paths = paths.filter(p => !isHeard(p));
+    if (!paths.length) return;
+    for (const c of clips) if (paths.includes(c.path)) c.listened = true;
+    for (const p of paths) {
+      const row = document.querySelector(`.clip[data-path="${CSS.escape(p)}"]`);
+      if (row) { row.classList.remove("unheard"); updateBadge(row.closest(".convo")); }
     }
-    resetRows();
-    playingSrc = src;
-    clipAudio.src = src;
-    row.classList.add("playing");
-    clipAudio.play().then(() => { btn.innerText = "❚❚"; }).catch(() => {});
+    renderFilters();
+    const n = clips.filter(c => !c.listened).length;
+    document.getElementById("markAll").hidden = !n;
+    document.getElementById("summary").textContent = document.getElementById("summary").textContent.replace(/\d+ unheard$/, n + " unheard");
+    try {
+      await fetch("/radio/recordings/listened", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ paths }) });
+    } catch (e) {}
   }
 
-  function seek(ev, el) {
-    if (!clipAudio.duration) return;
-    const r = el.getBoundingClientRect();
+  function markAllHeard() { markHeard(clips.map(c => c.path)); }
+
+  function seek(ev, prog) {
+    const row = prog.closest(".clip");
+    if (row.dataset.path !== playingPath || !clipAudio.duration) return;
+    const r = prog.getBoundingClientRect();
     clipAudio.currentTime = Math.max(0, Math.min(1, (ev.clientX - r.left) / r.width)) * clipAudio.duration;
   }
 
   clipAudio.ontimeupdate = () => {
-    const row = document.querySelector(".clip.playing");
-    if (row && clipAudio.duration) row.querySelector(".bar").style.width = (100 * clipAudio.currentTime / clipAudio.duration) + "%";
+    if (!playingPath || !clipAudio.duration) return;
+    const row = document.querySelector(`.clip[data-path="${CSS.escape(playingPath)}"]`);
+    if (row) row.querySelector(".bar").style.width = (100 * clipAudio.currentTime / clipAudio.duration) + "%";
+    // "heard" = played to (nearly) the end, not merely started
+    if (!markedThis && clipAudio.currentTime / clipAudio.duration >= 0.9) { markedThis = true; markHeard([playingPath]); }
   };
-  clipAudio.onended = () => { playingSrc = null; resetRows(); };
+  clipAudio.onended = () => {
+    if (!markedThis && playingPath) markHeard([playingPath]);
+    if (queue.length) { const next = queue.shift(); setTimeout(() => playPath(next), 350); }
+    else { playingPath = null; syncPlayingUI(); }
+  };
+  clipAudio.onpause = clipAudio.onplay = syncPlayingUI;
 
   renderFilters();
   load();
