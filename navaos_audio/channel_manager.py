@@ -34,12 +34,13 @@ CHANNEL_FREQUENCIES_HZ = {
     "16": 156.800e6,
     "68": 156.425e6,
     "71": 156.575e6,
+    "72": 156.625e6,
     "wx": 162.425e6,
 }
 
 # WX4 (continuous weather broadcast) is excluded from the default scan --
 # it would always look like "traffic" and the scanner would lock on it forever.
-DEFAULT_SCAN_ORDER = ["09", "13", "16", "68", "71"]
+DEFAULT_SCAN_ORDER = ["09", "13", "16", "68", "71", "72"]
 
 
 class SessionConflictError(Exception):

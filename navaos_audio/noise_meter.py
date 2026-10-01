@@ -33,7 +33,7 @@ RANGE = "156.3M:156.9M:6250"
 GAIN = "49.6"
 HISTORY_S = 600
 HALF_BW_HZ = 6000
-CHANNELS_HZ = {"68": 156.425e6, "09": 156.450e6, "71": 156.575e6, "13": 156.650e6, "16": 156.800e6}
+CHANNELS_HZ = {"68": 156.425e6, "09": 156.450e6, "71": 156.575e6, "72": 156.625e6, "13": 156.650e6, "16": 156.800e6}
 DEFAULT_REFERENCE_DB = -30.4
 REFERENCE_FILE = Path(os.environ.get("NAVAOS_NOISE_REF_FILE", Path.home() / "navaos-data" / "noise_reference_db"))
 

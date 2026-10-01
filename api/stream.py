@@ -27,6 +27,7 @@ CHANNELS = {
     "16": {"mhz": "156.800 MHz", "name": "Channel 16 - Distress / Calling"},
     "68": {"mhz": "156.425 MHz", "name": "Channel 68"},
     "71": {"mhz": "156.575 MHz", "name": "Channel 71"},
+    "72": {"mhz": "156.625 MHz", "name": "Channel 72 - St. Augustine Cruisers Net"},
     "wx": {"mhz": "162.425 MHz", "name": "NOAA Weather WX4"},
 }
 

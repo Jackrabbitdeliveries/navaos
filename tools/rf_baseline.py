@@ -14,7 +14,7 @@ HALF_BW = 6000  # Hz; marine FM voice occupies ~+/-5 kHz
 ACTIVE_DB = 10.0  # dB above floor counted as "carrier present"
 
 CHANNELS = {
-    "68": 156.425e6, "09": 156.450e6, "71": 156.575e6,
+    "68": 156.425e6, "09": 156.450e6, "71": 156.575e6, "72": 156.625e6,
     "13": 156.650e6, "16": 156.800e6, "wx": 162.425e6,
 }
 
