@@ -2,11 +2,12 @@ import json
 import re
 from pathlib import Path
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Header, HTTPException
 from fastapi.responses import FileResponse, StreamingResponse, HTMLResponse
 from pydantic import BaseModel
 
 from navaos_audio.channel_manager import channel_manager, SessionConflictError
+from navaos_audio.control import ControlError, control
 from navaos_audio.recorder import last_heard, list_recordings, resolve_recording
 
 _TEMPLATES = Path(__file__).parent / "templates"
@@ -30,13 +31,55 @@ CHANNELS = {
 
 # ---- direct tune ------------------------------------------------------
 
+def _control(client: str | None, action: str, channel: str | None = None, pin: str | None = None) -> dict:
+    """Run a radio action through the shared-control rules (turns/queue/PIN)."""
+    try:
+        return control.request(client or "api", action, channel, pin)
+    except ControlError as e:
+        raise HTTPException(e.status, str(e))
+    except KeyError:
+        raise HTTPException(404, f"Unknown channel: {channel}")
+    except SessionConflictError as e:
+        raise HTTPException(409, str(e))
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+
+
+def _check_settings(client: str | None, pin: str | None) -> None:
+    try:
+        control.check_settings(client, pin)
+    except ControlError as e:
+        raise HTTPException(e.status, str(e))
+
+
+class ControlRequest(BaseModel):
+    action: str                 # tune | scan | stop | resume | cancel
+    channel: str | None = None
+    client: str | None = None
+    pin: str | None = None
+
+
+@router.post("/control")
+def control_radio(req: ControlRequest):
+    """The player's single entry point for changing the radio. Result is
+    "applied", "queued" (someone else's 10-min turn), "joined" (already
+    selected) or "cancelled"; plus the same control status as /status."""
+    channel = req.channel.lower() if req.channel else None
+    return _control(req.client, req.action, channel, req.pin)
+
+
 @router.get("/stream/{channel}.mp3")
-def stream_channel(channel: str):
+def stream_channel(channel: str, client: str | None = None):
     channel_key = channel.lower()
     try:
         channel_manager.get_config(channel_key)
     except KeyError:
         raise HTTPException(404, f"Unknown channel: {channel}")
+
+    # Listening never changes the radio: only the selected channel can be
+    # streamed (change it via POST /radio/control).
+    if control.selection() != {"mode": "direct", "channel": channel_key}:
+        raise HTTPException(409, "That channel isn't what the radio is set to.")
 
     try:
         # Subscribe eagerly, outside the generator, so a session conflict
@@ -46,6 +89,8 @@ def stream_channel(channel: str):
     except SessionConflictError as e:
         raise HTTPException(409, str(e))
 
+    control.stream_opened(client)
+
     def gen():
         try:
             while True:
@@ -54,6 +99,7 @@ def stream_channel(channel: str):
                     break
                 yield chunk
         finally:
+            control.stream_closed(client)
             channel_manager.unsubscribe_direct(channel_key, q)
 
     return StreamingResponse(
@@ -68,29 +114,21 @@ def stream_channel(channel: str):
 
 
 @router.get("/stop")
-def stop_radio_stream():
-    channel_manager.stop_direct()
-    return {"ok": True, "status": "stopped"}
+def stop_radio_stream(client: str | None = None):
+    return _control(client, "stop")
 
 
 # ---- scanning -----------------------------------------------------------
 
 @router.post("/scan/start")
-def start_scan():
+def start_scan(client: str | None = None):
     """Scans whatever channels are currently in the scan list - see
-    GET/POST /radio/scan/channels to manage that list. No per-request
-    channel selection; the list itself is the persistent state."""
-    try:
-        channel_manager.start_scan()
-    except SessionConflictError as e:
-        raise HTTPException(409, str(e))
-    except ValueError as e:
-        raise HTTPException(400, str(e))
-    return channel_manager.status()
+    GET/POST /radio/scan/channels to manage that list."""
+    return _control(client, "scan")
 
 
 @router.get("/scan/stream.mp3")
-def scan_stream():
+def scan_stream(client: str | None = None):
     """Subscribe to the scanner's audio output. Call /radio/scan/start first."""
     if channel_manager.status().get("mode") != "scan":
         raise HTTPException(409, "Scan is not currently running. POST /radio/scan/start first.")
@@ -100,6 +138,8 @@ def scan_stream():
     except ValueError as e:
         raise HTTPException(400, str(e))
 
+    control.stream_opened(client)
+
     def gen():
         try:
             while True:
@@ -108,22 +148,21 @@ def scan_stream():
                     break
                 yield chunk
         finally:
+            control.stream_closed(client)
             channel_manager.unsubscribe_scan(q)
 
     return StreamingResponse(gen(), media_type="audio/mpeg")
 
 
 @router.post("/scan/resume")
-def resume_scan():
+def resume_scan(client: str | None = None):
     """Unlock from whatever channel the scanner is currently parked on."""
-    channel_manager.resume_scan()
-    return channel_manager.status()
+    return _control(client, "resume")
 
 
 @router.post("/scan/stop")
-def stop_scan():
-    channel_manager.stop_scan()
-    return channel_manager.status()
+def stop_scan(client: str | None = None):
+    return _control(client, "stop")
 
 
 # ---- scan channel list (scan memory) ---------------------------------------
@@ -138,7 +177,9 @@ def get_scan_channels():
 
 
 @router.post("/scan/channels/add")
-def add_scan_channel(req: ScanChannelRequest):
+def add_scan_channel(req: ScanChannelRequest, client: str | None = None,
+                     x_override_pin: str | None = Header(default=None)):
+    _check_settings(client, x_override_pin)
     try:
         channels = channel_manager.add_scan_channel(req.channel.lower())
     except KeyError:
@@ -147,7 +188,9 @@ def add_scan_channel(req: ScanChannelRequest):
 
 
 @router.post("/scan/channels/remove")
-def remove_scan_channel(req: ScanChannelRequest):
+def remove_scan_channel(req: ScanChannelRequest, client: str | None = None,
+                        x_override_pin: str | None = Header(default=None)):
+    _check_settings(client, x_override_pin)
     try:
         channels = channel_manager.remove_scan_channel(req.channel.lower())
     except KeyError:
@@ -165,7 +208,9 @@ class ScanParams(BaseModel):
 
 
 @router.patch("/scan/params")
-def update_scan_params(params: ScanParams):
+def update_scan_params(params: ScanParams, client: str | None = None,
+                       x_override_pin: str | None = Header(default=None)):
+    _check_settings(client, x_override_pin)
     changes = {k: v for k, v in params.model_dump().items() if v is not None}
     settings = channel_manager.update_scan_settings(**changes)
     return settings.__dict__
@@ -174,8 +219,11 @@ def update_scan_params(params: ScanParams):
 # ---- shared status / tuning -----------------------------------------------
 
 @router.get("/status")
-def status():
-    return channel_manager.status()
+def status(client: str | None = None):
+    """Hardware status plus shared-control state for `client`; polling it is
+    also that client's heartbeat."""
+    control.heartbeat(client)
+    return {**channel_manager.status(), **control.status(client)}
 
 
 class ChannelParams(BaseModel):
@@ -202,7 +250,9 @@ def get_params(channel: str):
 
 
 @router.patch("/{channel}/params")
-def update_params(channel: str, params: ChannelParams):
+def update_params(channel: str, params: ChannelParams, client: str | None = None,
+                  x_override_pin: str | None = Header(default=None)):
+    _check_settings(client, x_override_pin)
     changes = {k: v for k, v in params.model_dump().items() if v is not None}
     try:
         cfg = channel_manager.update_config(channel.lower(), **changes)

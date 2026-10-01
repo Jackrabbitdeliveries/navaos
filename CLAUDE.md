@@ -71,7 +71,10 @@ Legacy path (`ChannelConfig.receiver="rtl_fm"`): rtl_fm → AdaptiveSquelch
   Resume), channel cards (tap = direct tune, "scan" toggle, ⚙ sensitivity,
   "heard N min ago"), recent-transmissions strip. Plain HTML/JS — `/player`
   substitutes `__CHANNELS__` and `__CHANNEL_ORDER__`. Keep channel order
-  explicit: JS `Object.keys` puts "13" etc. before "09".
+  explicit: JS `Object.keys` puts "13" etc. before "09". Polls `/status`
+  every 2 s; shows whose turn it is, a queued-request banner (PIN / Cancel),
+  re-attaches audio when the selection changes, and never auto-resumes audio
+  the user paused. The PIN, once used, is remembered in localStorage.
 - `api/templates/recordings.html` — recordings page, same dark theme/palette
   as the player (keep the `:root` colour tokens in sync): photo strip header,
   channel filter chips, Today/Yesterday/date groups, play/pause + tap-to-seek
@@ -113,6 +116,18 @@ Legacy path (`ChannelConfig.receiver="rtl_fm"`): rtl_fm → AdaptiveSquelch
     keep running with no listener, direct tune stops when the last listener
     leaves). ~1.75 s per channel,
     ~9 s per 5-channel cycle; lock lands ~1.1 s after arriving on a busy channel.
+  - `control.py` — **shared-radio rules** (2026-09-30, Kevin's spec). One
+    radio, everyone shares it; pages are remotes that follow the server's
+    *selection* (idle / direct:<ch> / scan). Whoever changes it gets a
+    **10-min turn** (from when they took it; own changes don't extend it).
+    Others' changes during a turn are **queued** (latest wins) and applied
+    when it ends, or at once if the holder **leaves** (no `/status` poll and
+    no open audio stream for 15 s). Queued requests from people who left are
+    dropped. Settings (scan list, sliders, resume) are allowed only for the
+    holder / when open / with the PIN (else HTTP 423). **Override PIN** in
+    `~/navaos-data/override_pin` (or `NAVAOS_OVERRIDE_PIN`) — never in the repo
+    (it's public); only checked when actually needed; 5 wrong tries / 10 min
+    → 429. Streams only serve the selected channel (409 otherwise).
   - `channel_manager.py` — **the single hardware arbiter**: only one session
     (direct tune OR scan) may own the dongle; conflicts → HTTP 409.
     `DEFAULT_SCAN_ORDER = ["09", "13", "16", "68", "71"]`.
@@ -121,6 +136,12 @@ Legacy path (`ChannelConfig.receiver="rtl_fm"`): rtl_fm → AdaptiveSquelch
   outdated). This file supersedes it.
 
 ### Routes (prefix `/radio`)
+`POST /control {action: tune|scan|stop|resume|cancel, channel, client, pin}`
+→ `applied | queued | joined | cancelled` (the player's only way to change the
+radio; `client` = random id kept in the browser's localStorage). Legacy
+`GET /stop`, `POST /scan/start|stop|resume` go through the same rules.
+`GET /status?client=` adds `selection` + `control` and doubles as heartbeat.
+Settings endpoints take `?client=` and an `X-Override-Pin` header.
 `GET /stream/{channel}.mp3`, `GET /stop`, `POST /scan/start`,
 `GET /scan/stream.mp3`, `POST /scan/resume`, `POST /scan/stop`,
 `GET|POST /scan/channels[/add|/remove]`, `PATCH /scan/params`,

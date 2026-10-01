@@ -82,6 +82,21 @@
     .ro-name { font-size: 16px; font-weight: 600; }
     .ro-freq { font-family: var(--mono); color: var(--cyan); font-size: 15px; margin-top: 2px; }
     .ro-status { color: var(--muted); font-size: 14px; margin-top: 10px; min-height: 18px; }
+    .turn { font-size: 12px; color: var(--muted); margin-top: 6px; font-family: var(--mono); min-height: 15px; }
+    .turn.mine { color: var(--green); }
+    .turn.theirs { color: var(--amber); }
+    .queued {
+      display: flex; justify-content: space-between; align-items: center; gap: 8px;
+      margin-top: 10px; padding: 8px 10px; border-radius: 10px; font-size: 13px;
+      border: 1px dashed var(--amber); color: var(--amber); background: rgba(255,181,71,0.07);
+    }
+    .queued[hidden] { display: none; }
+    .q-actions { display: flex; gap: 6px; flex: none; }
+    .mini {
+      font: inherit; font-size: 12px; font-weight: 700; color: var(--text); background: var(--panel);
+      border: 1px solid var(--line); border-radius: 8px; padding: 5px 8px; cursor: pointer;
+    }
+    .toast { color: var(--amber); }
     audio#radio { width: 100%; height: 36px; margin-top: 12px; }
 
     /* ---- transport ---- */
@@ -172,6 +187,14 @@
         </div>
       </div>
       <div id="status" class="ro-status">Tap a channel to listen, or start a scan.</div>
+      <div id="turn" class="turn"></div>
+      <div id="queued" class="queued" hidden>
+        <span id="queuedText"></span>
+        <span class="q-actions">
+          <button class="mini" onclick="usePin()">PIN</button>
+          <button class="mini" onclick="cancelQueued()">Cancel</button>
+        </span>
+      </div>
       <audio id="radio" controls preload="none"></audio>
     </div>
 
@@ -200,10 +223,26 @@
   const scanStartBtn = document.getElementById("btn-start-scan");
   const scanResumeBtn = document.getElementById("btn-resume-scan");
 
-  let mode = "idle";          // idle | direct | scan
-  let directChannel = null;
-  let scanPollTimer = null;
+  // The radio is shared: the server's *selection* is the truth, and this page
+  // follows it. wantAudio = this person wants to hear whatever is selected.
+  let selection = { mode: "idle", channel: null };
+  let ctl = null;              // control block from /radio/status
+  let wantAudio = false;
   let lastHeard = {};
+  let notice = null;           // {text, until} - transient message that beats the default status line
+
+  const clientId = (() => {
+    let id = null;
+    try { id = localStorage.getItem("navaos_client"); } catch (e) {}
+    if (!id) {
+      id = (crypto.randomUUID ? crypto.randomUUID() : String(Math.random()).slice(2) + Date.now());
+      try { localStorage.setItem("navaos_client", id); } catch (e) {}
+    }
+    return id;
+  })();
+  function savedPin() { try { return localStorage.getItem("navaos_pin"); } catch (e) { return null; } }
+  function savePin(p) { try { localStorage.setItem("navaos_pin", p); } catch (e) {} }
+  function forgetPin() { try { localStorage.removeItem("navaos_pin"); } catch (e) {} }
 
   // ---------- rendering helpers ----------
 
@@ -332,7 +371,59 @@
   }
   clipAudio.onended = () => document.querySelectorAll(".clip").forEach(r => { r.classList.remove("playing"); r.querySelector(".clip-play").innerText = "▶"; });
 
-  // ---------- direct tune ----------
+  // ---------- talking to the shared radio ----------
+
+  function say(text, seconds) { notice = { text, until: Date.now() + (seconds || 6) * 1000 }; setStatus(text); }
+
+  function fmt(sec) { sec = Math.max(0, Math.round(sec)); return Math.floor(sec / 60) + ":" + String(sec % 60).padStart(2, "0"); }
+
+  function describe(action, channel) {
+    if (action === "tune") return "Ch " + label(channel);
+    if (action === "scan") return "Scan";
+    if (action === "stop") return "Stop";
+    return action;
+  }
+
+  async function control(action, channel, pin) {
+    const body = { action, channel: channel || null, client: clientId, pin: pin || savedPin() || null };
+    let res;
+    try {
+      res = await fetch("/radio/control", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+    } catch (e) { say("Network error - try again."); return null; }
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      if (res.status === 403 && !pin) forgetPin();          // remembered PIN went stale
+      say(data.detail || "That didn't work.");
+      return null;
+    }
+    if (pin) savePin(pin);
+    applyStatus(data);
+    return data;
+  }
+
+  async function settingsFetch(url, opts) {
+    opts = opts || {};
+    opts.headers = Object.assign({}, opts.headers || {});
+    const pin = savedPin();
+    if (pin) opts.headers["X-Override-Pin"] = pin;
+    const sep = url.includes("?") ? "&" : "?";
+    const res = await fetch(url + sep + "client=" + encodeURIComponent(clientId), opts);
+    if (!res.ok) {
+      const d = await res.json().catch(() => ({}));
+      say(d.detail || "Couldn't change that setting.", 8);
+      throw new Error("refused");
+    }
+    return res;
+  }
+
+  // ---------- following the radio ----------
+
+  function wantedSrc() {
+    if (!wantAudio) return null;
+    if (selection.mode === "direct" && selection.channel) return "/radio/stream/" + selection.channel + ".mp3";
+    if (selection.mode === "scan") return "/radio/scan/stream.mp3";
+    return null;
+  }
 
   function resetAudio() {
     audio.pause();
@@ -340,154 +431,133 @@
     audio.load();
   }
 
-  async function playRadio(channel) {
-    const info = channels[channel];
-    try {
-      const d = await (await fetch("/radio/status?x=" + Date.now())).json();
-      if (d.mode === "scan") {
-        setStatus("A scan is running — stop it before tuning a single channel.");
-        setPill("SCANNING", "scan");
-        return;
-      }
-    } catch (err) {}
-
-    setStatus("Tuning…");
-    resetAudio();
-    await fetch("/radio/stop?x=" + Date.now());
-    await new Promise(r => setTimeout(r, 900));
-
-    setReadout(channel, "on");
-    audio.src = "/radio/stream/" + channel + ".mp3?t=" + Date.now();
-    audio.volume = 1.0;
+  // (Re)attach audio only when what the radio is playing changes, or when
+  // forced (user tap / dropped stream). A user who paused the audio bar
+  // (e.g. from the lock screen) stays paused.
+  async function syncAudio(force) {
+    const want = wantedSrc();
+    const have = (audio.getAttribute("src") || "").split("?")[0];
+    if (!want) { if (have) resetAudio(); return; }
+    if (want === have && !force) return;
+    audio.src = want + "?client=" + encodeURIComponent(clientId) + "&t=" + Date.now();
     audio.load();
-    try {
-      await audio.play();
-      mode = "direct"; directChannel = channel;
-      setStatus("Listening — audio opens when someone transmits.");
-      setPill("LISTENING", "listen");
-      markCards(channel, "active");
-    } catch (err) {
-      setStatus("Couldn't start audio: " + err);
-      setPill("ERROR", "error");
-      markCards(null);
+    try { await audio.play(); }
+    catch (e) { setStatus("Tap ▶ on the audio bar to start listening."); }
+  }
+
+  function applyStatus(d) {
+    const prevSel = JSON.stringify(selection);
+    selection = d.selection || { mode: "idle", channel: null };
+    ctl = d.control || null;
+    const changedByOther = prevSel !== JSON.stringify(selection) && ctl && !ctl.last_change_by_you && prevSel !== '{"mode":"idle","channel":null}';
+    render(d);
+    if (changedByOther && wantAudio) say("Another listener changed the radio.", 6);
+    syncAudio();
+  }
+
+  function render(d) {
+    const sel = selection;
+    // pill + readout + cards
+    if (sel.mode === "scan") {
+      const key = d.current_channel;
+      if (d.locked) {
+        setPill("LOCKED", "locked"); setReadout(key, "locked"); markCards(key, "locked");
+        defaultStatus("Traffic on " + label(key) + " - holding. Resume to keep scanning.");
+      } else {
+        setPill("SCANNING", "scan"); setReadout(key, "on"); markCards(key, "scanning");
+        defaultStatus("Scanning - will stop on the first transmission.");
+      }
+      scanResumeBtn.disabled = !d.locked;
+    } else if (sel.mode === "direct") {
+      setPill(wantAudio ? "LISTENING" : "TUNED", "listen");
+      setReadout(sel.channel, "on"); markCards(sel.channel, "active");
+      defaultStatus(wantAudio ? "Listening - audio opens when someone transmits." : "Radio is on " + label(sel.channel) + " - tap it to listen.");
+      scanResumeBtn.disabled = true;
+    } else {
+      setPill("IDLE"); setReadout(null); markCards(null);
+      defaultStatus("Tap a channel to listen, or start a scan.");
+      scanResumeBtn.disabled = true;
+    }
+    scanStartBtn.innerText = sel.mode !== "scan" ? "⟳ Scan" : (wantAudio ? "■ Stop scan" : "▶ Join scan");
+
+    // whose turn
+    const turn = document.getElementById("turn");
+    if (!ctl || sel.mode === "idle" && !ctl.turn_active) { turn.className = "turn"; turn.innerText = ""; }
+    else if (ctl.turn_active && ctl.yours) { turn.className = "turn mine"; turn.innerText = "● You have the radio · " + fmt(ctl.turn_remaining_s) + " left"; }
+    else if (ctl.turn_active) { turn.className = "turn theirs"; turn.innerText = "● Another listener has the radio · " + fmt(ctl.turn_remaining_s) + " left"; }
+    else { turn.className = "turn"; turn.innerText = "○ Open - anyone can change it"; }
+    const n = ctl ? ctl.listeners : 0;
+    if (n > 1) turn.innerText += " · " + n + " listening";
+
+    // my queued request
+    const q = document.getElementById("queued");
+    const p = ctl && ctl.pending;
+    if (p && p.yours) {
+      q.hidden = false;
+      document.getElementById("queuedText").innerText = describe(p.action, p.channel) + " is next - starts in " + fmt(p.applies_in_s);
+    } else {
+      q.hidden = true;
     }
   }
 
-  async function stopDirect() {
-    resetAudio();
-    await fetch("/radio/stop?x=" + Date.now());
+  function defaultStatus(text) {
+    if (notice && Date.now() < notice.until) return;   // a fresh message wins for a few seconds
+    notice = null;
+    setStatus(text);
   }
 
-  // ---------- scanning ----------
-
-  function startScanPolling() {
-    if (scanPollTimer) return;
-    scanPollTimer = setInterval(pollScanStatus, 1500);
-    pollScanStatus();
-  }
-
-  function stopScanPolling() {
-    if (scanPollTimer) { clearInterval(scanPollTimer); scanPollTimer = null; }
-    scanResumeBtn.disabled = true;
-  }
-
-  async function pollScanStatus() {
+  async function pollStatus() {
     try {
-      const d = await (await fetch("/radio/status?x=" + Date.now())).json();
-      if (d.mode !== "scan") { stopScanPolling(); showIdle(); return; }
-      mode = "scan";
-      scanButtonLabel();
-      const key = d.current_channel;
-      if (d.locked) {
-        setPill("LOCKED", "locked");
-        setReadout(key, "locked");
-        markCards(key, "locked");
-        setStatus("Traffic on " + label(key) + " — holding. Resume to keep scanning.");
-        scanResumeBtn.disabled = false;
-      } else {
-        setPill("SCANNING", "scan");
-        setReadout(key, "on");
-        markCards(key, "scanning");
-        setStatus("Scanning — will stop on the first transmission.");
-        scanResumeBtn.disabled = true;
-      }
-    } catch (err) {}
+      const d = await (await fetch("/radio/status?client=" + encodeURIComponent(clientId) + "&x=" + Date.now())).json();
+      applyStatus(d);
+    } catch (e) {}
   }
 
-  function scanAudioAttached() {
-    return (audio.getAttribute("src") || "").includes("/scan/stream");
-  }
+  // ---------- user actions ----------
 
-  function scanButtonLabel() {
-    scanStartBtn.innerText = mode !== "scan" ? "⟳ Scan" : scanAudioAttached() ? "■ Stop scan" : "▶ Join scan";
-  }
-
-  async function joinScanAudio() {
-    audio.src = "/radio/scan/stream.mp3?t=" + Date.now();
-    audio.volume = 1.0;
-    audio.load();
-    try { await audio.play(); } catch (err) { setStatus("Couldn't start audio: " + err); }
-    scanButtonLabel();
+  async function playRadio(channel) {
+    const joining = selection.mode === "direct" && selection.channel === channel;
+    wantAudio = true;
+    const r = await control("tune", channel);
+    if (r && r.result === "joined") syncAudio(joining && audio.paused);
+    if (r && r.result === "queued") say("Another listener has the radio - your pick is queued. You're hearing their choice meanwhile.", 8);
   }
 
   async function startScan() {
-    if (mode === "scan") { return scanAudioAttached() ? stopScan() : joinScanAudio(); }
-    markCards(null);
-    setStatus("Starting scan…");
-    let res;
-    try { res = await fetch("/radio/scan/start", { method: "POST" }); }
-    catch (err) { setStatus("Error: " + err); setPill("ERROR", "error"); return; }
-    if (res.status === 409) {
-      const e = await res.json();
-      setStatus(e.detail || "A single channel is playing — stop it first.");
-      return;
-    }
-    if (!res.ok) {
-      const e = await res.json().catch(() => ({}));
-      setStatus(e.detail || "Couldn't start the scan.");
-      return;
-    }
-    mode = "scan";
-    await joinScanAudio();
-    startScanPolling();
+    if (selection.mode === "scan" && !wantAudio) { wantAudio = true; return syncAudio(true).then(pollStatus); }   // Join
+    if (selection.mode === "scan") return stopAll();
+    wantAudio = true;
+    const r = await control("scan");
+    if (r && r.result === "queued") say("Another listener has the radio - your scan is queued.", 8);
   }
 
-  async function resumeScan() {
-    try {
-      const res = await fetch("/radio/scan/resume", { method: "POST" });
-      if (!res.ok) setStatus("Couldn't resume the scan.");
-    } catch (err) { setStatus("Error: " + err); }
-  }
-
-  async function stopScan() {
-    stopScanPolling();
-    resetAudio();
-    await fetch("/radio/scan/stop", { method: "POST" });
-  }
-
-  function showIdle() {
-    mode = "idle"; directChannel = null;
-    scanStartBtn.innerText = "⟳ Scan";
-    setPill("IDLE");
-    setReadout(null);
-    markCards(null);
-    setStatus("Stopped. Tap a channel to listen, or start a scan.");
-  }
+  async function resumeScan() { await control("resume"); }
 
   async function stopAll() {
-    if (mode === "scan") await stopScan(); else await stopDirect();
-    showIdle();
+    const r = await control("stop");
+    if (r && r.result === "queued") { say("Another listener has the radio - Stop is queued. Pause the audio bar to stop just your own audio.", 9); return; }
+    if (r) { wantAudio = false; resetAudio(); applyStatus(r); }
+  }
+
+  async function cancelQueued() { await control("cancel"); say("Request cancelled."); }
+
+  async function usePin() {
+    const p = ctl && ctl.pending;
+    const pin = window.prompt("Override PIN");
+    if (!pin) return;
+    const r = await control(p ? p.action : "tune", p ? p.channel : selection.channel, pin.trim());
+    if (r) say("Override applied.");
   }
 
   async function toggleScanChannel(channel, included) {
     const endpoint = included ? "/radio/scan/channels/add" : "/radio/scan/channels/remove";
     try {
-      await fetch(endpoint, {
+      await settingsFetch(endpoint, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ channel: channel }),
       });
-    } catch (err) {}
+    } catch (err) { loadScanChannels(); }   // refused: put the checkbox back
   }
 
   async function loadScanChannels() {
@@ -536,16 +606,16 @@
 
   async function sendSensitivityUpdate(channel, value) {
     try {
-      await fetch("/radio/" + channel + "/params", {
+      await settingsFetch("/radio/" + channel + "/params", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(sliderToParams(value)),
       });
-    } catch (err) {}
+    } catch (err) { loadChannelSettings(); }   // refused: snap the slider back
   }
 
   async function loadChannelSettings() {
-    for (const key of Object.keys(channels)) {
+    for (const key of channelOrder) {
       try {
         const d = await (await fetch("/radio/" + key + "/params?x=" + Date.now())).json();
         const slider = document.querySelector(`.sensitivity-slider[data-channel="${key}"]`);
@@ -558,12 +628,14 @@
     }
   }
 
-  audio.onerror = function () {
-    if (!audio.getAttribute("src")) return;   // resetAudio() clearing the source isn't an error
-    setStatus("Audio dropped. Press Stop, wait 2 seconds, then pick a channel again.");
-    setPill("ERROR", "error");
-    markCards(null);
-  };
+  // A stream can end (pipeline restarted, network blip) without the radio's
+  // selection changing; reconnect once a second later if we still want audio.
+  function reconnectSoon() {
+    if (!wantAudio || !audio.getAttribute("src")) return;
+    setTimeout(() => { if (wantAudio && (audio.ended || audio.error)) syncAudio(true); }, 1000);
+  }
+  audio.onerror = reconnectSoon;
+  audio.onended = reconnectSoon;
 
   // ---------- startup ----------
 
@@ -574,19 +646,8 @@
     loadActivity();
     setInterval(loadActivity, 20000);
     setInterval(renderLastHeard, 30000);
-    try {
-      const d = await (await fetch("/radio/status?x=" + Date.now())).json();
-      if (d.mode === "scan") {
-        startScanPolling();
-        setStatus("A scan is already running — tap ▶ Join scan to listen in.");
-      } else if (d.mode === "direct" && channels[d.channel]) {
-        mode = "direct"; directChannel = d.channel;
-        setReadout(d.channel, "on");
-        markCards(d.channel, "active");
-        setPill("LISTENING", "listen");
-        setStatus("Someone is listening on " + label(d.channel) + " — tap it to join.");
-      }
-    } catch (err) {}
+    await pollStatus();
+    setInterval(pollStatus, 2000);
   })();
 </script>
 </body>
