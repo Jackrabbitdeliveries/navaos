@@ -1,0 +1,586 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#07111f">
+  <title>Nava VHF</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #07111f;
+      --panel: #0f1f36;
+      --panel-2: #132845;
+      --line: #1f3b60;
+      --text: #e6eef8;
+      --muted: #8aa0b8;
+      --cyan: #4fd1ff;
+      --amber: #ffb547;
+      --green: #4ade80;
+      --red: #ff6b6b;
+      --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
+      -webkit-tap-highlight-color: transparent;
+    }
+    .wrap { max-width: 640px; margin: 0 auto; padding: 0 14px 40px; }
+
+    /* ---- header photo ---- */
+    .hero {
+      position: relative;
+      height: 190px;
+      background:
+        linear-gradient(180deg, rgba(7,17,31,0.15) 0%, rgba(7,17,31,0.55) 60%, var(--bg) 100%),
+        url("/radio/static/hero.jpg") center 60% / cover no-repeat,
+        radial-gradient(ellipse at 70% 20%, #1b3b6b 0%, #0b1d3a 45%, var(--bg) 100%);
+    }
+    .hero-bar {
+      position: absolute; left: 16px; right: 16px; bottom: 14px;
+      max-width: 612px; margin: 0 auto;
+      display: flex; align-items: flex-end; justify-content: space-between; gap: 10px;
+    }
+    .brand { font-size: 26px; font-weight: 800; letter-spacing: 0.06em; text-shadow: 0 2px 12px rgba(0,0,0,0.6); }
+    .brand small { display: block; font-size: 12px; font-weight: 600; letter-spacing: 0.18em; color: var(--muted); }
+    .pill {
+      font-family: var(--mono); font-size: 12px; font-weight: 700; letter-spacing: 0.12em;
+      padding: 6px 10px; border-radius: 999px; border: 1px solid var(--line);
+      background: rgba(7,17,31,0.75); color: var(--muted); white-space: nowrap;
+    }
+    .pill::before { content: "●"; margin-right: 6px; }
+    .pill.listen { color: var(--cyan); border-color: var(--cyan); }
+    .pill.scan   { color: var(--cyan); border-color: var(--cyan); }
+    .pill.scan::before { animation: blink 1s steps(2) infinite; }
+    .pill.locked { color: var(--amber); border-color: var(--amber); }
+    .pill.error  { color: var(--red); border-color: var(--red); }
+    @keyframes blink { 50% { opacity: 0.2; } }
+
+    /* ---- main readout ---- */
+    .readout {
+      margin-top: 4px;
+      background: linear-gradient(160deg, var(--panel-2), var(--panel));
+      border: 1px solid var(--line); border-radius: 14px; padding: 16px;
+      transition: box-shadow 0.3s, border-color 0.3s;
+    }
+    .readout.on { border-color: var(--cyan); box-shadow: 0 0 22px rgba(79,209,255,0.18); }
+    .readout.locked { border-color: var(--amber); box-shadow: 0 0 22px rgba(255,181,71,0.25); }
+    .readout.locked .ro-ch { color: var(--amber); }
+    .ro-top { display: flex; align-items: baseline; gap: 12px; }
+    .ro-ch { font-family: var(--mono); font-size: 44px; font-weight: 800; line-height: 1; }
+    .ro-ch.dim { color: #34506f; }
+    .ro-name { font-size: 16px; font-weight: 600; }
+    .ro-freq { font-family: var(--mono); color: var(--cyan); font-size: 15px; margin-top: 2px; }
+    .ro-status { color: var(--muted); font-size: 14px; margin-top: 10px; min-height: 18px; }
+    audio#radio { width: 100%; height: 36px; margin-top: 12px; }
+
+    /* ---- transport ---- */
+    .transport { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 12px; }
+    .btn {
+      font: inherit; font-size: 15px; font-weight: 700; color: var(--text);
+      background: var(--panel); border: 1px solid var(--line); border-radius: 10px;
+      padding: 12px 6px; cursor: pointer;
+    }
+    .btn:active { transform: scale(0.98); }
+    .btn:disabled { opacity: 0.35; cursor: default; }
+    .btn.primary { border-color: var(--cyan); color: var(--cyan); }
+    .btn.warn { border-color: var(--amber); color: var(--amber); }
+
+    /* ---- channel grid ---- */
+    h2 {
+      font-size: 12px; letter-spacing: 0.18em; color: var(--muted); font-weight: 700;
+      margin: 22px 2px 8px; display: flex; justify-content: space-between; align-items: center;
+    }
+    h2 a { color: var(--cyan); text-decoration: none; letter-spacing: 0.05em; font-size: 13px; }
+    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+    .card {
+      position: relative; background: var(--panel); border: 1px solid var(--line);
+      border-radius: 12px; padding: 12px 12px 10px; cursor: pointer;
+      transition: border-color 0.2s, box-shadow 0.2s;
+    }
+    .card.active { border-color: var(--cyan); box-shadow: 0 0 16px rgba(79,209,255,0.22); }
+    .card.scanning { border-color: rgba(79,209,255,0.5); }
+    .card.locked { border-color: var(--amber); box-shadow: 0 0 16px rgba(255,181,71,0.25); }
+    .card.open { grid-column: 1 / -1; cursor: default; }
+    .c-num { font-family: var(--mono); font-size: 26px; font-weight: 800; line-height: 1; }
+    .c-name { font-size: 13px; color: var(--text); margin-top: 4px; min-height: 16px;
+              white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding-right: 30px; }
+    .c-heard { font-size: 12px; color: var(--muted); margin-top: 6px; }
+    .c-heard.recent { color: var(--green); }
+    .c-row { display: flex; justify-content: space-between; align-items: center; margin-top: 8px; }
+    .scan-toggle {
+      display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted);
+      padding: 4px 8px; border: 1px solid var(--line); border-radius: 999px; user-select: none;
+    }
+    .scan-toggle input { accent-color: var(--cyan); margin: 0; }
+    .scan-toggle:has(input:checked) { color: var(--cyan); border-color: rgba(79,209,255,0.6); }
+    .gear {
+      position: absolute; top: 8px; right: 8px; width: 30px; height: 30px; border-radius: 8px;
+      border: 1px solid transparent; background: transparent; color: var(--muted); font-size: 16px; cursor: pointer;
+    }
+    .card.open .gear { border-color: var(--line); color: var(--cyan); }
+    .settings { display: none; margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--line); }
+    .card.open .settings { display: block; }
+    .slider-labels { display: flex; justify-content: space-between; font-size: 12px; color: var(--muted); }
+    .sensitivity-slider { width: 100%; accent-color: var(--cyan); margin: 8px 0 4px; }
+    .sensitivity-readout { font-size: 13px; color: var(--text); }
+
+    /* ---- recent clips ---- */
+    .clips { display: flex; flex-direction: column; gap: 6px; }
+    .clip {
+      display: flex; align-items: center; gap: 10px; background: var(--panel);
+      border: 1px solid var(--line); border-radius: 10px; padding: 8px 10px;
+    }
+    .clip-play {
+      flex: none; width: 38px; height: 38px; border-radius: 50%; border: 1px solid var(--cyan);
+      background: transparent; color: var(--cyan); font-size: 14px; cursor: pointer;
+    }
+    .clip.playing .clip-play { background: var(--cyan); color: var(--bg); }
+    .clip-main { flex: 1; min-width: 0; }
+    .clip-title { font-size: 14px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .clip-sub { font-size: 12px; color: var(--muted); margin-top: 2px; }
+    .sig { font-family: var(--mono); font-size: 12px; flex: none; }
+    .sig.weak { color: var(--amber); } .sig.good { color: var(--cyan); } .sig.strong { color: var(--green); }
+    .empty { color: var(--muted); font-size: 14px; padding: 12px 2px; }
+  </style>
+</head>
+<body>
+  <div class="hero">
+    <div class="hero-bar">
+      <div class="brand">⚓ NAVA VHF<small>ST. AUGUSTINE</small></div>
+      <div id="pill" class="pill">IDLE</div>
+    </div>
+  </div>
+
+  <div class="wrap">
+    <div id="readout" class="readout">
+      <div class="ro-top">
+        <div id="roCh" class="ro-ch dim">--</div>
+        <div>
+          <div id="roName" class="ro-name">Not tuned</div>
+          <div id="roFreq" class="ro-freq">--- --- MHz</div>
+        </div>
+      </div>
+      <div id="status" class="ro-status">Tap a channel to listen, or start a scan.</div>
+      <audio id="radio" controls preload="none"></audio>
+    </div>
+
+    <div class="transport">
+      <button id="stopButton" class="btn" onclick="stopAll()">■ Stop</button>
+      <button id="btn-start-scan" class="btn primary" onclick="startScan()">⟳ Scan</button>
+      <button id="btn-resume-scan" class="btn warn" onclick="resumeScan()" disabled>▶ Resume</button>
+    </div>
+
+    <h2>CHANNELS</h2>
+    <div id="grid" class="grid"></div>
+
+    <h2>RECENT TRANSMISSIONS <a href="/radio/recordings/view">All recordings →</a></h2>
+    <div id="clips" class="clips"><div class="empty">Loading…</div></div>
+    <audio id="clipAudio" preload="none"></audio>
+  </div>
+
+<script>
+  const channels = __CHANNELS__;   // {key: {name, mhz}}
+  // Explicit order: Object.keys() would put "13","16"... (array-index-like)
+  // before "09" (leading zero) and "wx".
+  const channelOrder = __CHANNEL_ORDER__;
+  const audio = document.getElementById("radio");
+  const clipAudio = document.getElementById("clipAudio");
+  const statusEl = document.getElementById("status");
+  const scanStartBtn = document.getElementById("btn-start-scan");
+  const scanResumeBtn = document.getElementById("btn-resume-scan");
+
+  let mode = "idle";          // idle | direct | scan
+  let directChannel = null;
+  let scanPollTimer = null;
+  let lastHeard = {};
+
+  // ---------- rendering helpers ----------
+
+  function shortName(key) {
+    // "Channel 09 - Bridge of Lions" -> "Bridge of Lions"; "Channel 68" -> ""
+    const n = channels[key].name;
+    const m = n.match(/^Channel\s+\S+\s*-\s*(.+)$/);
+    if (m) return m[1];
+    if (/^Channel\s+\S+$/.test(n)) return "";
+    return n;
+  }
+  function label(key) { return key === "wx" ? "WX" : key; }
+
+  function ago(ts) {
+    const s = Math.max(0, Date.now() / 1000 - ts);
+    if (s < 60) return "just now";
+    if (s < 3600) return Math.round(s / 60) + " min ago";
+    if (s < 86400) return Math.round(s / 3600) + " h ago";
+    return Math.round(s / 86400) + " d ago";
+  }
+
+  function setStatus(text) { statusEl.innerText = text; }
+
+  function setPill(text, cls) {
+    const p = document.getElementById("pill");
+    p.className = "pill " + (cls || "");
+    p.innerText = text;
+  }
+
+  function setReadout(key, state) {
+    const ro = document.getElementById("readout");
+    ro.className = "readout " + (state || "");
+    const ch = document.getElementById("roCh");
+    if (!key) {
+      ch.innerText = "--"; ch.classList.add("dim");
+      document.getElementById("roName").innerText = "Not tuned";
+      document.getElementById("roFreq").innerText = "--- --- MHz";
+      return;
+    }
+    ch.innerText = label(key); ch.classList.remove("dim");
+    document.getElementById("roName").innerText = shortName(key) || "Channel " + key;
+    document.getElementById("roFreq").innerText = channels[key].mhz;
+  }
+
+  function markCards(key, cls) {
+    document.querySelectorAll(".card").forEach(c => c.classList.remove("active", "scanning", "locked"));
+    if (key) {
+      const c = document.getElementById("card-" + key);
+      if (c) c.classList.add(cls);
+    }
+  }
+
+  function buildGrid() {
+    const grid = document.getElementById("grid");
+    grid.innerHTML = channelOrder.map(key => `
+      <div class="card" id="card-${key}" onclick="onCardTap(event, '${key}')">
+        <button class="gear" title="Squelch sensitivity" onclick="event.stopPropagation(); toggleSettings('${key}')">⚙</button>
+        <div class="c-num">${label(key)}</div>
+        <div class="c-name">${shortName(key) || channels[key].mhz}</div>
+        <div class="c-heard" id="heard-${key}">—</div>
+        <div class="c-row">
+          <label class="scan-toggle" onclick="event.stopPropagation()">
+            <input type="checkbox" class="scan-checkbox" data-channel="${key}"
+                   onchange="toggleScanChannel('${key}', this.checked)"> scan
+          </label>
+        </div>
+        <div class="settings" onclick="event.stopPropagation()">
+          <div class="slider-labels"><span>Sensitive</span><span>Strict</span></div>
+          <input type="range" min="0" max="100" value="50" class="sensitivity-slider"
+                 data-channel="${key}" oninput="onSensitivityInput('${key}', this.value)">
+          <div class="sensitivity-readout">Sensitivity: <span id="sens-label-${key}">—</span></div>
+        </div>
+      </div>`).join("");
+  }
+
+  function onCardTap(ev, key) {
+    if (document.getElementById("card-" + key).classList.contains("open")) return;
+    playRadio(key);
+  }
+
+  // ---------- last heard + recent clips ----------
+
+  function renderLastHeard() {
+    for (const key of Object.keys(channels)) {
+      const el = document.getElementById("heard-" + key);
+      if (!el) continue;
+      const h = lastHeard[key];
+      if (!h) { el.innerText = "not heard yet"; el.classList.remove("recent"); continue; }
+      el.innerText = "heard " + ago(h.ts);
+      el.classList.toggle("recent", Date.now() / 1000 - h.ts < 600);
+    }
+  }
+
+  function sigClass(db) { return db === null ? "" : db < 15 ? "weak" : db < 30 ? "good" : "strong"; }
+
+  async function loadActivity() {
+    try {
+      lastHeard = await (await fetch("/radio/recordings/last-heard?x=" + Date.now())).json();
+      renderLastHeard();
+    } catch (e) {}
+    if (!clipAudio.paused) return;   // don't redraw under a clip that's playing
+    try {
+      const clips = await (await fetch("/radio/recordings?limit=5&x=" + Date.now())).json();
+      const el = document.getElementById("clips");
+      if (!clips.length) { el.innerHTML = '<div class="empty">No transmissions recorded yet.</div>'; return; }
+      el.innerHTML = clips.map(c => `
+        <div class="clip" data-src="/radio/recordings/file/${c.path}">
+          <button class="clip-play" onclick="playClip(this)">▶</button>
+          <div class="clip-main">
+            <div class="clip-title">Ch ${label(c.channel)}${shortName(c.channel) ? " · " + shortName(c.channel) : ""}</div>
+            <div class="clip-sub">${ago(c.ts)} · ${c.duration_s.toFixed(1)} s</div>
+          </div>
+          <div class="sig ${sigClass(c.peak_rf_snr_db)}">${c.peak_rf_snr_db === null ? "" : "+" + c.peak_rf_snr_db + " dB"}</div>
+        </div>`).join("");
+    } catch (e) {}
+  }
+
+  function playClip(btn) {
+    const row = btn.closest(".clip");
+    const src = row.dataset.src;
+    const wasThis = row.classList.contains("playing");
+    document.querySelectorAll(".clip").forEach(r => { r.classList.remove("playing"); r.querySelector(".clip-play").innerText = "▶"; });
+    if (wasThis && !clipAudio.paused) { clipAudio.pause(); return; }
+    clipAudio.src = src;
+    clipAudio.play().then(() => { row.classList.add("playing"); btn.innerText = "❚❚"; }).catch(() => {});
+  }
+  clipAudio.onended = () => document.querySelectorAll(".clip").forEach(r => { r.classList.remove("playing"); r.querySelector(".clip-play").innerText = "▶"; });
+
+  // ---------- direct tune ----------
+
+  function resetAudio() {
+    audio.pause();
+    audio.removeAttribute("src");
+    audio.load();
+  }
+
+  async function playRadio(channel) {
+    const info = channels[channel];
+    try {
+      const d = await (await fetch("/radio/status?x=" + Date.now())).json();
+      if (d.mode === "scan") {
+        setStatus("A scan is running — stop it before tuning a single channel.");
+        setPill("SCANNING", "scan");
+        return;
+      }
+    } catch (err) {}
+
+    setStatus("Tuning…");
+    resetAudio();
+    await fetch("/radio/stop?x=" + Date.now());
+    await new Promise(r => setTimeout(r, 900));
+
+    setReadout(channel, "on");
+    audio.src = "/radio/stream/" + channel + ".mp3?t=" + Date.now();
+    audio.volume = 1.0;
+    audio.load();
+    try {
+      await audio.play();
+      mode = "direct"; directChannel = channel;
+      setStatus("Listening — audio opens when someone transmits.");
+      setPill("LISTENING", "listen");
+      markCards(channel, "active");
+    } catch (err) {
+      setStatus("Couldn't start audio: " + err);
+      setPill("ERROR", "error");
+      markCards(null);
+    }
+  }
+
+  async function stopDirect() {
+    resetAudio();
+    await fetch("/radio/stop?x=" + Date.now());
+  }
+
+  // ---------- scanning ----------
+
+  function startScanPolling() {
+    if (scanPollTimer) return;
+    scanPollTimer = setInterval(pollScanStatus, 1500);
+    pollScanStatus();
+  }
+
+  function stopScanPolling() {
+    if (scanPollTimer) { clearInterval(scanPollTimer); scanPollTimer = null; }
+    scanResumeBtn.disabled = true;
+  }
+
+  async function pollScanStatus() {
+    try {
+      const d = await (await fetch("/radio/status?x=" + Date.now())).json();
+      if (d.mode !== "scan") { stopScanPolling(); showIdle(); return; }
+      mode = "scan";
+      scanButtonLabel();
+      const key = d.current_channel;
+      if (d.locked) {
+        setPill("LOCKED", "locked");
+        setReadout(key, "locked");
+        markCards(key, "locked");
+        setStatus("Traffic on " + label(key) + " — holding. Resume to keep scanning.");
+        scanResumeBtn.disabled = false;
+      } else {
+        setPill("SCANNING", "scan");
+        setReadout(key, "on");
+        markCards(key, "scanning");
+        setStatus("Scanning — will stop on the first transmission.");
+        scanResumeBtn.disabled = true;
+      }
+    } catch (err) {}
+  }
+
+  function scanAudioAttached() {
+    return (audio.getAttribute("src") || "").includes("/scan/stream");
+  }
+
+  function scanButtonLabel() {
+    scanStartBtn.innerText = mode !== "scan" ? "⟳ Scan" : scanAudioAttached() ? "■ Stop scan" : "▶ Join scan";
+  }
+
+  async function joinScanAudio() {
+    audio.src = "/radio/scan/stream.mp3?t=" + Date.now();
+    audio.volume = 1.0;
+    audio.load();
+    try { await audio.play(); } catch (err) { setStatus("Couldn't start audio: " + err); }
+    scanButtonLabel();
+  }
+
+  async function startScan() {
+    if (mode === "scan") { return scanAudioAttached() ? stopScan() : joinScanAudio(); }
+    markCards(null);
+    setStatus("Starting scan…");
+    let res;
+    try { res = await fetch("/radio/scan/start", { method: "POST" }); }
+    catch (err) { setStatus("Error: " + err); setPill("ERROR", "error"); return; }
+    if (res.status === 409) {
+      const e = await res.json();
+      setStatus(e.detail || "A single channel is playing — stop it first.");
+      return;
+    }
+    if (!res.ok) {
+      const e = await res.json().catch(() => ({}));
+      setStatus(e.detail || "Couldn't start the scan.");
+      return;
+    }
+    mode = "scan";
+    await joinScanAudio();
+    startScanPolling();
+  }
+
+  async function resumeScan() {
+    try {
+      const res = await fetch("/radio/scan/resume", { method: "POST" });
+      if (!res.ok) setStatus("Couldn't resume the scan.");
+    } catch (err) { setStatus("Error: " + err); }
+  }
+
+  async function stopScan() {
+    stopScanPolling();
+    resetAudio();
+    await fetch("/radio/scan/stop", { method: "POST" });
+  }
+
+  function showIdle() {
+    mode = "idle"; directChannel = null;
+    scanStartBtn.innerText = "⟳ Scan";
+    setPill("IDLE");
+    setReadout(null);
+    markCards(null);
+    setStatus("Stopped. Tap a channel to listen, or start a scan.");
+  }
+
+  async function stopAll() {
+    if (mode === "scan") await stopScan(); else await stopDirect();
+    showIdle();
+  }
+
+  async function toggleScanChannel(channel, included) {
+    const endpoint = included ? "/radio/scan/channels/add" : "/radio/scan/channels/remove";
+    try {
+      await fetch(endpoint, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ channel: channel }),
+      });
+    } catch (err) {}
+  }
+
+  async function loadScanChannels() {
+    try {
+      const d = await (await fetch("/radio/scan/channels?x=" + Date.now())).json();
+      const included = new Set(d.channels || []);
+      document.querySelectorAll(".scan-checkbox").forEach(c => { c.checked = included.has(c.dataset.channel); });
+    } catch (err) {}
+  }
+
+  // ---------- per-channel squelch sensitivity ----------
+  // RF squelch thresholds, dB above the band noise floor (empty channel
+  // ~0 dB, noise peaks ~+1.3). Sensitive = opens on weaker signals.
+  const SENSITIVITY_MIN_DB = 4.0;
+  const SENSITIVITY_MAX_DB = 16.0;
+  const CLOSE_THRESHOLD_OFFSET_DB = 4.0;
+  const CLOSE_THRESHOLD_MIN_DB = 3.0;
+  const sensitivityDebounceTimers = {};
+
+  function toggleSettings(channel) {
+    document.getElementById("card-" + channel).classList.toggle("open");
+  }
+
+  function sliderToParams(value) {
+    const v = Number(value);
+    const rf_open_threshold_db = SENSITIVITY_MIN_DB + (v / 100) * (SENSITIVITY_MAX_DB - SENSITIVITY_MIN_DB);
+    const rf_close_threshold_db = Math.max(CLOSE_THRESHOLD_MIN_DB, rf_open_threshold_db - CLOSE_THRESHOLD_OFFSET_DB);
+    return { rf_open_threshold_db, rf_close_threshold_db };
+  }
+
+  function openThresholdToSlider(db) {
+    const c = Math.max(SENSITIVITY_MIN_DB, Math.min(SENSITIVITY_MAX_DB, db));
+    return Math.round((c - SENSITIVITY_MIN_DB) / (SENSITIVITY_MAX_DB - SENSITIVITY_MIN_DB) * 100);
+  }
+
+  function updateSensitivityLabel(channel, value) {
+    const el = document.getElementById("sens-label-" + channel);
+    if (el) el.innerText = value + "% (opens at +" + sliderToParams(value).rf_open_threshold_db.toFixed(0) + " dB)";
+  }
+
+  function onSensitivityInput(channel, value) {
+    updateSensitivityLabel(channel, value);
+    clearTimeout(sensitivityDebounceTimers[channel]);
+    sensitivityDebounceTimers[channel] = setTimeout(() => sendSensitivityUpdate(channel, value), 300);
+  }
+
+  async function sendSensitivityUpdate(channel, value) {
+    try {
+      await fetch("/radio/" + channel + "/params", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(sliderToParams(value)),
+      });
+    } catch (err) {}
+  }
+
+  async function loadChannelSettings() {
+    for (const key of Object.keys(channels)) {
+      try {
+        const d = await (await fetch("/radio/" + key + "/params?x=" + Date.now())).json();
+        const slider = document.querySelector(`.sensitivity-slider[data-channel="${key}"]`);
+        if (slider && typeof d.rf_open_threshold_db === "number") {
+          const pos = openThresholdToSlider(d.rf_open_threshold_db);
+          slider.value = pos;
+          updateSensitivityLabel(key, pos);
+        }
+      } catch (err) {}
+    }
+  }
+
+  audio.onerror = function () {
+    if (!audio.getAttribute("src")) return;   // resetAudio() clearing the source isn't an error
+    setStatus("Audio dropped. Press Stop, wait 2 seconds, then pick a channel again.");
+    setPill("ERROR", "error");
+    markCards(null);
+  };
+
+  // ---------- startup ----------
+
+  (async function init() {
+    buildGrid();
+    loadScanChannels();
+    loadChannelSettings();
+    loadActivity();
+    setInterval(loadActivity, 20000);
+    setInterval(renderLastHeard, 30000);
+    try {
+      const d = await (await fetch("/radio/status?x=" + Date.now())).json();
+      if (d.mode === "scan") {
+        startScanPolling();
+        setStatus("A scan is already running — tap ▶ Join scan to listen in.");
+      } else if (d.mode === "direct" && channels[d.channel]) {
+        mode = "direct"; directChannel = d.channel;
+        setReadout(d.channel, "on");
+        markCards(d.channel, "active");
+        setPill("LISTENING", "listen");
+        setStatus("Someone is listening on " + label(d.channel) + " — tap it to join.");
+      }
+    } catch (err) {}
+  })();
+</script>
+</body>
+</html>

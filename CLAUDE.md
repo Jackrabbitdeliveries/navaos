@@ -63,8 +63,17 @@ Legacy path (`ChannelConfig.receiver="rtl_fm"`): rtl_fm → AdaptiveSquelch
 
 - `main.py` — FastAPI app; mounts the single router; shuts down
   `channel_manager` on lifespan exit.
-- `api/stream.py` — all HTTP routes under `/radio`, plus the `/radio/player`
-  HTML page (web UI is inline in this file). Channel table `CHANNELS` lives here.
+- `api/stream.py` — all HTTP routes under `/radio`. Channel table `CHANNELS`
+  (display names/freqs, **order = UI order**) lives here. The recordings page
+  HTML is still inline here.
+- `api/templates/player.html` — the player page (dark nautical theme, 2026-09-30):
+  header photo, big channel readout, transport (Stop / Scan↔Join↔Stop scan /
+  Resume), channel cards (tap = direct tune, "scan" toggle, ⚙ sensitivity,
+  "heard N min ago"), recent-transmissions strip. Plain HTML/JS — `/player`
+  substitutes `__CHANNELS__` and `__CHANNEL_ORDER__`. Keep channel order
+  explicit: JS `Object.keys` puts "13" etc. before "09".
+- `static/` — images served at `/radio/static/<name>` (e.g. `hero.jpg`, the
+  player header photo; page falls back to a gradient if it's missing).
 - `navaos_audio/` package:
   - `config.py` — `ChannelConfig` (per-channel, frozen dataclass),
     `ScanSettings` (scan-wide), thread-safe `ConfigStore` for live updates.
@@ -112,7 +121,9 @@ Legacy path (`ChannelConfig.receiver="rtl_fm"`): rtl_fm → AdaptiveSquelch
 `GET /scan/stream.mp3`, `POST /scan/resume`, `POST /scan/stop`,
 `GET|POST /scan/channels[/add|/remove]`, `PATCH /scan/params`,
 `GET /status`, `GET|PATCH /{channel}/params`, `GET /player`,
-`GET /recordings[?channel=&limit=]` (JSON), `GET /recordings/file/{day}/{name}`
+`GET /recordings[?channel=&limit=]` (JSON, each clip has `ts` epoch seconds),
+`GET /recordings/last-heard` (newest clip per channel), `GET /static/{name}`,
+`GET /recordings/file/{day}/{name}`
 (filename-validated), `GET /recordings/view` (page, linked from the player).
 
 The player's per-channel **sensitivity slider** sets `rf_open_threshold_db`
@@ -287,6 +298,17 @@ here until issues are set up.)
 - Add `requirements.txt` (pin setuptools <81 for webrtcvad).
 - AGC/leveler not implemented.
 - More UI sliders (only RF sensitivity exists; gain/volume/hang time not).
+- Restyle `/radio/recordings/view` to match the new dark player.
+- Header photo: Kevin has a Bridge of Lions night photo → `static/hero.jpg`.
+
+### Previewing pages (no browser tools in this setup)
+Headless Chromium works for screenshots but has **no network** from the
+Claude Code sandbox, and needs its own profile dir. Render the page to a file
+with fetch() mocked (see git history 2026-09-30 for the preview script idea),
+then `chromium --headless=new --no-sandbox --disable-gpu --user-data-dir=<tmp>
+--hide-scrollbars --window-size=412,1500 --timeout=2500 --screenshot=out.png
+file://page.html` and view the PNG. CSS transitions may be caught mid-fade —
+disable them for the screenshot.
 - SSH hardening unverified: `PasswordAuthentication no`, `PermitRootLogin no`,
   Cloudflare Access policy on `ssh.nnwx.com`, fail2ban.
 - `~/nava-os/backend` old code copy could be cleaned up (keep `.venv`, or move

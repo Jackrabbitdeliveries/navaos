@@ -176,9 +176,13 @@ def list_recordings(base_dir: Path = RECORDINGS_DIR, channel: Optional[str] = No
             if not m or (channel and m["channel"] != channel):
                 continue
             hms = m["hms"]
+            when = f"{day.name}T{hms[:2]}:{hms[2:4]}:{hms[4:]}"
             out.append({
                 "path": f"{day.name}/{f.name}",
-                "time": f"{day.name}T{hms[:2]}:{hms[2:4]}:{hms[4:]}",
+                "time": when,
+                # Epoch seconds (Pi local time -> UTC) so browsers in other
+                # timezones can still say "4 min ago" correctly.
+                "ts": _dt.datetime.fromisoformat(when).timestamp(),
                 "channel": m["channel"],
                 "duration_s": float(m["dur"]),
                 "peak_rf_snr_db": None if m["snr"] == "na" else int(m["snr"]),
@@ -186,6 +190,16 @@ def list_recordings(base_dir: Path = RECORDINGS_DIR, channel: Optional[str] = No
             })
             if len(out) >= limit:
                 return out
+    return out
+
+
+def last_heard(base_dir: Path = RECORDINGS_DIR) -> dict[str, dict]:
+    """Most recent clip per channel: {channel: {time, ts, duration_s,
+    peak_rf_snr_db}}. Walks newest day folders first, so it's cheap."""
+    out: dict[str, dict] = {}
+    for clip in list_recordings(base_dir=base_dir, limit=100_000):
+        if clip["channel"] not in out:
+            out[clip["channel"]] = {k: clip[k] for k in ("time", "ts", "duration_s", "peak_rf_snr_db")}
     return out
 
 
