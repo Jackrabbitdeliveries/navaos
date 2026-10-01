@@ -128,6 +128,15 @@ Legacy path (`ChannelConfig.receiver="rtl_fm"`): rtl_fm → AdaptiveSquelch
     `~/navaos-data/override_pin` (or `NAVAOS_OVERRIDE_PIN`) — never in the repo
     (it's public); only checked when actually needed; 5 wrong tries / 10 min
     → 429. Streams only serve the selected channel (409 otherwise).
+    **Default mode:** after 20 min with no activity (no control/settings
+    request and nobody listening; the clock starts when the last listener
+    stops) the radio returns to scanning `DEFAULT_SCAN_ORDER` (09/13/16/68/71 —
+    WX excluded, it never stops transmitting). A running scan is left alone,
+    even a custom list. Also starts 30 s after service start (reboot-safe).
+    ⚠️ **Tests / spare dev instances must set `NAVAOS_DEFAULT_SCAN=0`** —
+    importing `control.py` creates the real instance, which would otherwise
+    grab the dongle (this happened once in testing; harmless only because the
+    live service held the device).
   - `channel_manager.py` — **the single hardware arbiter**: only one session
     (direct tune OR scan) may own the dongle; conflicts → HTTP 409.
     `DEFAULT_SCAN_ORDER = ["09", "13", "16", "68", "71"]`.

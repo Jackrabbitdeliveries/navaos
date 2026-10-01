@@ -451,7 +451,8 @@
     ctl = d.control || null;
     const changedByOther = prevSel !== JSON.stringify(selection) && ctl && !ctl.last_change_by_you && prevSel !== '{"mode":"idle","channel":null}';
     render(d);
-    if (changedByOther && wantAudio) say("Another listener changed the radio.", 6);
+    if (changedByOther && ctl.last_change_default) say("No activity for 20 min - back to scanning all channels.", 10);
+    else if (changedByOther && wantAudio) say("Another listener changed the radio.", 6);
     syncAudio();
   }
 
@@ -488,6 +489,9 @@
     else { turn.className = "turn"; turn.innerText = "○ Open - anyone can change it"; }
     const n = ctl ? ctl.listeners : 0;
     if (n > 1) turn.innerText += " · " + n + " listening";
+    if (ctl && ctl.default_scan_in_s !== null && ctl.default_scan_in_s !== undefined && ctl.default_scan_in_s < 1200 && !ctl.pending) {
+      turn.innerText += (turn.innerText ? " · " : "") + "default scan in " + fmt(ctl.default_scan_in_s);
+    }
 
     // my queued request
     const q = document.getElementById("queued");

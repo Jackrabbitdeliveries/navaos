@@ -19,6 +19,14 @@ Everyone who opens the player shares one radio. Rules (agreed 2026-09-30):
   NAVAOS_OVERRIDE_PIN env var or ~/navaos-data/override_pin - never from
   the repo (which is public). Wrong PINs are rate-limited.
 
+Default mode: after IDLE_RETURN_S (20 min) with no activity - no control
+or settings request and nobody listening - the radio goes back to scanning
+DEFAULT_SCAN_ORDER (the five marine channels; WX is excluded because it
+transmits continuously and would hold the scanner forever). A scan that's
+already running is left alone, even with a custom list (e.g. a 09-only
+bridge watch). The same default starts STARTUP_DEFAULT_S after the service
+starts, so the radio is monitoring/recording after any reboot.
+
 The radio's *selection* (idle / direct:<channel> / scan) is tracked here: a
 direct-tune pipeline only runs while someone is subscribed, so "the radio is
 set to 71" can be true with no pipeline running. Pages follow the selection
@@ -34,11 +42,16 @@ import time
 from pathlib import Path
 from typing import Optional
 
-from .channel_manager import SessionConflictError, channel_manager
+from .channel_manager import DEFAULT_SCAN_ORDER, SessionConflictError, channel_manager
 
 LEASE_S = 600
 ACTIVE_S = 15
 PIN_FILE = Path(os.environ.get("NAVAOS_PIN_FILE", Path.home() / "navaos-data" / "override_pin"))
+IDLE_RETURN_S = 1200
+STARTUP_DEFAULT_S = 30
+# Tests and spare dev instances MUST set NAVAOS_DEFAULT_SCAN=0, or importing
+# this module starts a real scan on the dongle STARTUP_DEFAULT_S later.
+DEFAULT_SCAN_ENABLED = os.environ.get("NAVAOS_DEFAULT_SCAN", "1") != "0"
 PIN_MAX_FAILURES = 5
 PIN_FAILURE_WINDOW_S = 600
 
@@ -76,6 +89,9 @@ class ControlManager:
         self._streams: collections.Counter = collections.Counter()
         self._pin_failures: collections.deque = collections.deque()
         self._last_change: Optional[dict] = None
+        # Pretend the last activity was long enough ago that the default scan
+        # starts STARTUP_DEFAULT_S after boot.
+        self._last_activity = time.monotonic() - IDLE_RETURN_S + STARTUP_DEFAULT_S
         threading.Thread(target=self._tick_loop, daemon=True).start()
 
     # ---- presence ---------------------------------------------------------
@@ -89,7 +105,7 @@ class ControlManager:
         if client:
             with self._lock:
                 self._streams[client] += 1
-                self._seen[client] = time.monotonic()
+                self._seen[client] = self._last_activity = time.monotonic()
 
     def stream_closed(self, client: Optional[str]) -> None:
         if client:
@@ -97,6 +113,8 @@ class ControlManager:
                 self._streams[client] -= 1
                 if self._streams[client] <= 0:
                     del self._streams[client]
+                # The idle clock starts when the last listener stops.
+                self._last_activity = time.monotonic()
 
     def _active(self, client: Optional[str]) -> bool:
         if not client:
@@ -138,6 +156,7 @@ class ControlManager:
         with self._lock:
             self.heartbeat(client)
             self._reconcile()
+            self._last_activity = time.monotonic()
 
             if action == "cancel":
                 if self._pending and self._pending["by"] == client:
@@ -186,6 +205,7 @@ class ControlManager:
         (scan list, per-channel squelch) right now."""
         with self._lock:
             self.heartbeat(client)
+            self._last_activity = time.monotonic()
             if self._holder == client or not self._turn_active():
                 return
             if pin and self._pin_ok(pin):
@@ -251,6 +271,31 @@ class ControlManager:
                         print(f"CONTROL-QUEUED-FAILED {p['action']}: {e}", flush=True)
             elif self._holder is not None and not self._active(self._holder):
                 self._holder = None  # holder left: radio is open
+            self._maybe_default_scan(now)
+
+    def _maybe_default_scan(self, now: float) -> None:
+        if not DEFAULT_SCAN_ENABLED:
+            return
+        if self._selection["mode"] == "scan" or self._pending is not None:
+            return
+        if any(n > 0 for n in self._streams.values()):
+            return
+        if now - self._last_activity < IDLE_RETURN_S:
+            return
+        cm = self._cm
+        for ch in cm.get_scan_channels():
+            if ch not in DEFAULT_SCAN_ORDER:
+                cm.remove_scan_channel(ch)
+        for ch in DEFAULT_SCAN_ORDER:
+            cm.add_scan_channel(ch)
+        self._holder = None
+        self._last_activity = now  # don't retry every second if it fails
+        try:
+            self._apply("scan", None)
+            self._last_change = {"by": None, "at": time.time()}
+            print(f"CONTROL-DEFAULT-SCAN channels={cm.get_scan_channels()}", flush=True)
+        except (ValueError, SessionConflictError) as e:
+            print(f"CONTROL-DEFAULT-SCAN-FAILED {e}", flush=True)
 
     # ---- status -------------------------------------------------------------
 
@@ -276,7 +321,13 @@ class ControlManager:
                     "turn_remaining_s": max(0, int(self._lease_until - now)) if turn else 0,
                     "pending": pending,
                     "last_change_by_you": bool(self._last_change and self._last_change["by"] == client),
+                    "last_change_default": bool(self._last_change and self._last_change["by"] is None),
                     "listeners": sum(1 for c in self._streams if self._streams[c] > 0),
+                    "default_scan_in_s": (
+                        None if not DEFAULT_SCAN_ENABLED or self._selection["mode"] == "scan"
+                        or any(n > 0 for n in self._streams.values())
+                        else max(0, int(IDLE_RETURN_S - (now - self._last_activity)))
+                    ),
                 },
             }
 
