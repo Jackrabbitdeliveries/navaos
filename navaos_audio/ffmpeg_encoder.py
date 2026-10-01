@@ -15,6 +15,24 @@ from typing import Iterator, Optional
 from .config import ChannelConfig
 
 
+def build_filter_chain(cfg: ChannelConfig) -> str:
+    """The FFmpeg -af chain shared by the live stream and the recorder."""
+    return ",".join([
+        "highpass=f=300",
+        "lowpass=f=3000",
+        "afftdn=nr=12:nf=-25",
+        # NBFM audio comes out of the demod around -40 dBFS regardless of
+        # signal strength (level is set by transmitter deviation), so it
+        # needs fixed makeup gain - the compressor alone never engaged.
+        # Gain goes after afftdn so its absolute noise floor is unchanged;
+        # the limiter keeps hot transmitters from clipping.
+        f"volume={cfg.makeup_gain_db}dB",
+        f"acompressor=threshold=-20dB:ratio=3:attack=5:release=100:makeup={cfg.compressor_makeup}",
+        f"volume={cfg.volume}",
+        "alimiter=limit=0.9:level=disabled",
+    ])
+
+
 class FFmpegEncoder:
     def __init__(self, config: ChannelConfig):
         self._cfg = config
@@ -22,20 +40,7 @@ class FFmpegEncoder:
 
     def _build_args(self) -> list[str]:
         cfg = self._cfg
-        filters = ",".join([
-            "highpass=f=300",
-            "lowpass=f=3000",
-            "afftdn=nr=12:nf=-25",
-            # NBFM audio comes out of the demod around -40 dBFS regardless of
-            # signal strength (level is set by transmitter deviation), so it
-            # needs fixed makeup gain - the compressor alone never engaged.
-            # Gain goes after afftdn so its absolute noise floor is unchanged;
-            # the limiter keeps hot transmitters from clipping.
-            f"volume={cfg.makeup_gain_db}dB",
-            f"acompressor=threshold=-20dB:ratio=3:attack=5:release=100:makeup={cfg.compressor_makeup}",
-            f"volume={cfg.volume}",
-            "alimiter=limit=0.9:level=disabled",
-        ])
+        filters = build_filter_chain(cfg)
         return [
             "ffmpeg",
             "-f", "s16le",

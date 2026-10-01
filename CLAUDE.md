@@ -83,13 +83,22 @@ Legacy path (`ChannelConfig.receiver="rtl_fm"`): rtl_fm → AdaptiveSquelch
     highpass 300 → lowpass 3k → afftdn → **+`makeup_gain_db`** → compressor
     (makeup ×`compressor_makeup`) → `volume` → limiter 0.9. NBFM audio leaves
     the demod ~−40 dBFS whatever the signal strength, so the gain is fixed,
-    not AGC.
+    not AGC. `build_filter_chain(cfg)` is shared with the recorder.
+  - `recorder.py` — `TransmissionRecorder`: each squelch opening → one MP3
+    (same filter chain, own short-lived ffmpeg writing to disk). Files:
+    `~/navaos-data/recordings/YYYY-MM-DD/HHMMSS_ch<ch>_<dur>s_<peak snr>dB.mp3`
+    (metadata lives in the filename; no DB). Drops clips < 0.5 s, prunes day
+    folders > 30 days, pauses under 1 GB free. Env: `NAVAOS_RECORDINGS_DIR`,
+    `NAVAOS_RECORDING=0` disables. Fed by both pipelines after the squelch.
   - `audio_pipeline.py` — one per direct-tuned channel; fans MP3 out to N
     subscribers.
   - `scan_controller.py` — cycles channels, locks on traffic (open ≥
     `lock_sustain_s`), auto-resumes after `auto_unlock_quiet_s` of quiet or on
     `resume()`. Dwell is timed from the **first frame** (device open takes
-    ~0.7 s) and never hops while the gate is open. ~1.75 s per channel,
+    ~0.7 s) and never hops while the gate is open; a **one-channel scan list
+    never hops** (use it for unattended watching of a single channel — scans
+    keep running with no listener, direct tune stops when the last listener
+    leaves). ~1.75 s per channel,
     ~9 s per 5-channel cycle; lock lands ~1.1 s after arriving on a busy channel.
   - `channel_manager.py` — **the single hardware arbiter**: only one session
     (direct tune OR scan) may own the dongle; conflicts → HTTP 409.
@@ -102,7 +111,14 @@ Legacy path (`ChannelConfig.receiver="rtl_fm"`): rtl_fm → AdaptiveSquelch
 `GET /stream/{channel}.mp3`, `GET /stop`, `POST /scan/start`,
 `GET /scan/stream.mp3`, `POST /scan/resume`, `POST /scan/stop`,
 `GET|POST /scan/channels[/add|/remove]`, `PATCH /scan/params`,
-`GET /status`, `GET|PATCH /{channel}/params`, `GET /player`.
+`GET /status`, `GET|PATCH /{channel}/params`, `GET /player`,
+`GET /recordings[?channel=&limit=]` (JSON), `GET /recordings/file/{day}/{name}`
+(filename-validated), `GET /recordings/view` (page, linked from the player).
+
+The player's per-channel **sensitivity slider** sets `rf_open_threshold_db`
+4 (Sensitive) … 16 (Strict) dB, close = open − 4 (min 3). Before 2026-09-30
+it set the legacy audio thresholds and did nothing in RF mode. Param changes
+are **in memory only — lost on service restart.**
 
 ### Channels
 | Key | Freq | Notes |
@@ -167,8 +183,9 @@ _Last updated: 2026-09-30 (evening — moved home)_
 5. ~~Remove debug print~~ — done 2026-09-30.
 6. **Next (changed 2026-09-30): stay at home for a while.** Kevin plans to
    mount the whip above the house roof and try to receive ch09 (bridge
-   tender + boats) during bridge openings. Ideas offered: record each
-   transmission as a timestamped clip (+ list page) to review later.
+   tender + boats) during bridge openings. **Transmission recorder built
+   2026-09-30** for this (scan list = just 09, leave it running, review on
+   /radio/recordings/view).
    Boat test (real traffic; confirm boat hum = battery charger with shore
    power on / charger off) comes later.
 
@@ -235,6 +252,13 @@ metric = (8–16 kHz energy) − (0.3–3 kHz energy):
 (No GitHub issues exist yet — the deploy key can't use the issues API. Track
 here until issues are set up.)
 
+- **Monitor all channels at once:** 09/13/16/68/71 span only 156.425–156.800
+  MHz, so one ~1 MS/s IQ capture holds all five — demod + record every
+  channel simultaneously, no scanning gaps. Main cost: CPU (channelizer).
+  Recorder already takes the channel per clip.
+- Persist per-channel param changes (slider) across restarts.
+- Recordings and player are reachable by anyone who can reach
+  `vhf.nnwx.com` — check whether it's behind a Cloudflare Access policy.
 - **Faster scanning:** keep the dongle open and retune instead of restarting
   rtl_sdr per hop (rtl_tcp or pyrtlsdr). RF squelch decides in ~60 ms, so a
   5-channel cycle could drop from ~9 s to ~1–2 s.
@@ -262,7 +286,7 @@ here until issues are set up.)
   battery, never on a charger. WX4 not receivable at home even outdoors.
 - Add `requirements.txt` (pin setuptools <81 for webrtcvad).
 - AGC/leveler not implemented.
-- UI sliders not built.
+- More UI sliders (only RF sensitivity exists; gain/volume/hang time not).
 - SSH hardening unverified: `PasswordAuthentication no`, `PermitRootLogin no`,
   Cloudflare Access policy on `ssh.nnwx.com`, fail2ban.
 - `~/nava-os/backend` old code copy could be cleaned up (keep `.venv`, or move

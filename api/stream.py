@@ -1,8 +1,11 @@
+import json
+
 from fastapi import APIRouter, HTTPException
-from fastapi.responses import StreamingResponse, HTMLResponse
+from fastapi.responses import FileResponse, StreamingResponse, HTMLResponse
 from pydantic import BaseModel
 
 from navaos_audio.channel_manager import channel_manager, SessionConflictError
+from navaos_audio.recorder import list_recordings, resolve_recording
 
 router = APIRouter(prefix="/radio", tags=["radio"])
 
@@ -179,6 +182,8 @@ class ChannelParams(BaseModel):
     agc_enabled: bool | None = None
     volume: float | None = None
     rf_gain: float | None = None
+    rf_open_threshold_db: float | None = None
+    rf_close_threshold_db: float | None = None
 
 
 @router.get("/{channel}/params")
@@ -198,6 +203,113 @@ def update_params(channel: str, params: ChannelParams):
     except KeyError:
         raise HTTPException(404, f"Unknown channel: {channel}")
     return cfg.__dict__
+
+
+# ---- recordings -------------------------------------------------------
+
+@router.get("/recordings")
+def recordings(channel: str | None = None, limit: int = 500):
+    """Saved transmissions, newest first (see navaos_audio/recorder.py)."""
+    return list_recordings(channel=channel.lower() if channel else None, limit=min(limit, 5000))
+
+
+@router.get("/recordings/file/{day}/{name}")
+def recording_file(day: str, name: str):
+    path = resolve_recording(day, name)
+    if path is None:
+        raise HTTPException(404, "No such recording")
+    return FileResponse(path, media_type="audio/mpeg")
+
+
+@router.get("/recordings/view")
+def recordings_page():
+    names = {k: v["name"] for k, v in CHANNELS.items()}
+    return HTMLResponse(_RECORDINGS_HTML.replace("__CHANNELS__", json.dumps(names)))
+
+
+_RECORDINGS_HTML = """<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>NavaOS Recordings</title>
+  <style>
+    body { font-family: Arial; padding: 16px; background: #f7f7f7; max-width: 720px; margin: 0 auto; }
+    h1 { margin-bottom: 4px; }
+    a { color: #0b5cad; }
+    #filters { display: flex; flex-wrap: wrap; gap: 6px; margin: 12px 0; }
+    #filters button { padding: 8px 12px; border: 1px solid #aaa; background: white; border-radius: 6px; font-size: 15px; }
+    #filters button.active { background: #0b5cad; color: white; border-color: #0b5cad; }
+    .day { margin-top: 18px; font-weight: bold; color: #444; border-bottom: 1px solid #ccc; padding-bottom: 4px; }
+    .clip { background: white; border: 1px solid #ddd; border-radius: 6px; padding: 10px; margin-top: 8px; }
+    .meta { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 15px; margin-bottom: 6px; }
+    .time { font-weight: bold; }
+    .weak { color: #b26a00; } .ok { color: #2e7d32; }
+    audio { width: 100%; }
+    #summary { color: #555; font-size: 14px; }
+  </style>
+</head>
+<body>
+  <h1>Recordings</h1>
+  <div><a href="/radio/player">&larr; Back to player</a></div>
+  <div id="filters"></div>
+  <div id="summary">Loading&hellip;</div>
+  <div id="list"></div>
+<script>
+  const channels = __CHANNELS__;
+  let filter = null;
+
+  function snrLabel(db) {
+    if (db === null) return "";
+    const cls = db < 15 ? "weak" : "ok";
+    const word = db < 15 ? "weak" : (db < 30 ? "good" : "strong");
+    return `<span class="${cls}">signal +${db} dB (${word})</span>`;
+  }
+
+  function renderFilters() {
+    const el = document.getElementById("filters");
+    const keys = [null, ...Object.keys(channels)];
+    el.innerHTML = keys.map(k =>
+      `<button class="${k === filter ? "active" : ""}" data-k="${k ?? ""}">${k === null ? "All" : "Ch " + k}</button>`
+    ).join("");
+    el.querySelectorAll("button").forEach(b => b.onclick = () => {
+      filter = b.dataset.k || null; renderFilters(); load();
+    });
+  }
+
+  async function load() {
+    const url = "/radio/recordings?limit=1000" + (filter ? "&channel=" + filter : "") + "&x=" + Date.now();
+    const clips = await (await fetch(url)).json();
+    const total = clips.reduce((a, c) => a + c.duration_s, 0);
+    document.getElementById("summary").innerText =
+      clips.length ? `${clips.length} transmissions, ${Math.round(total)} s total (kept 30 days)` : "No recordings yet.";
+    let html = "", day = "";
+    for (const c of clips) {
+      const d = c.time.slice(0, 10);
+      if (d !== day) { day = d; html += `<div class="day">${d}</div>`; }
+      html += `<div class="clip"><div class="meta">
+          <span class="time">${c.time.slice(11)}</span>
+          <span>${channels[c.channel] || "Ch " + c.channel}</span>
+          <span>${c.duration_s.toFixed(1)} s</span>
+          ${snrLabel(c.peak_rf_snr_db)}
+        </div>
+        <audio controls preload="none" src="/radio/recordings/file/${c.path}"></audio></div>`;
+    }
+    document.getElementById("list").innerHTML = html;
+  }
+
+  function playing() {
+    return [...document.querySelectorAll("audio")].some(a => !a.paused);
+  }
+
+  renderFilters();
+  load();
+  // Pick up new transmissions, but never yank the list out from under a clip that's playing.
+  setInterval(() => { if (!playing()) load(); }, 30000);
+</script>
+</body>
+</html>
+"""
 
 
 # ---- player page ------------------------------------------------------
@@ -380,6 +492,7 @@ def player():
 </head>
 <body>
   <h1>NavaOS Radio</h1>
+  <div style="margin-bottom:12px"><a href="/radio/recordings/view">Recordings &rarr;</a></div>
 
   <div id="statusBox">
     <div id="status">Status: Idle</div>
@@ -619,9 +732,12 @@ def player():
     // vad_aggressiveness (discrete 0-3) and open_threshold_db (continuous
     // 3-15dB); close_threshold_db is derived as open_threshold_db - 3dB to
     // preserve a fixed hysteresis gap rather than exposing it separately.
-    const SENSITIVITY_MIN_DB = 3.0;
-    const SENSITIVITY_MAX_DB = 15.0;
-    const CLOSE_THRESHOLD_OFFSET_DB = 3.0;
+    // RF squelch thresholds, dB above the band noise floor (empty channel
+    // ~0 dB, noise peaks ~+1.3). Sensitive = opens on weaker signals.
+    const SENSITIVITY_MIN_DB = 4.0;
+    const SENSITIVITY_MAX_DB = 16.0;
+    const CLOSE_THRESHOLD_OFFSET_DB = 4.0;
+    const CLOSE_THRESHOLD_MIN_DB = 3.0;
     const sensitivityDebounceTimers = {{}};
 
     function toggleSettings(channel) {{
@@ -633,10 +749,9 @@ def player():
 
     function sliderToParams(value) {{
       const v = Number(value);
-      const vad_aggressiveness = Math.min(3, Math.floor(v / 25));
-      const open_threshold_db = SENSITIVITY_MIN_DB + (v / 100) * (SENSITIVITY_MAX_DB - SENSITIVITY_MIN_DB);
-      const close_threshold_db = open_threshold_db - CLOSE_THRESHOLD_OFFSET_DB;
-      return {{ vad_aggressiveness, open_threshold_db, close_threshold_db }};
+      const rf_open_threshold_db = SENSITIVITY_MIN_DB + (v / 100) * (SENSITIVITY_MAX_DB - SENSITIVITY_MIN_DB);
+      const rf_close_threshold_db = Math.max(CLOSE_THRESHOLD_MIN_DB, rf_open_threshold_db - CLOSE_THRESHOLD_OFFSET_DB);
+      return {{ rf_open_threshold_db, rf_close_threshold_db }};
     }}
 
     function openThresholdToSlider(open_threshold_db) {{
@@ -647,7 +762,8 @@ def player():
     function updateSensitivityLabel(channel, value) {{
       const label = document.getElementById("sens-label-" + channel);
       if (label) {{
-        label.innerText = value + "%";
+        const db = sliderToParams(value).rf_open_threshold_db;
+        label.innerText = value + "% (opens at +" + db.toFixed(0) + " dB)";
       }}
     }}
 
@@ -678,8 +794,8 @@ def player():
           const res = await fetch("/radio/" + key + "/params?x=" + Date.now());
           const data = await res.json();
           const slider = document.querySelector(`.sensitivity-slider[data-channel="${{key}}"]`);
-          if (slider && typeof data.open_threshold_db === "number") {{
-            const pos = openThresholdToSlider(data.open_threshold_db);
+          if (slider && typeof data.rf_open_threshold_db === "number") {{
+            const pos = openThresholdToSlider(data.rf_open_threshold_db);
             slider.value = pos;
             updateSensitivityLabel(key, pos);
           }}

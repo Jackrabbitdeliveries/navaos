@@ -23,6 +23,7 @@ import numpy as np
 from .config import ConfigStore
 from .ffmpeg_encoder import FFmpegEncoder
 from .iq_receiver import make_receiver
+from .recorder import TransmissionRecorder
 from .squelch import AdaptiveSquelch
 
 _VAD_FRAME_MS = 20  # webrtcvad supports 10/20/30ms frames only
@@ -118,6 +119,7 @@ class AudioPipeline:
         receiver = make_receiver(cfg, self._device_index)
         squelch = AdaptiveSquelch(cfg)
         encoder = FFmpegEncoder(cfg)
+        recorder = TransmissionRecorder()
 
         frame_samples = int(cfg.sample_rate * _VAD_FRAME_MS / 1000)
         frame_bytes = frame_samples * 2  # int16 mono
@@ -147,10 +149,10 @@ class AudioPipeline:
                     squelch.update_config(latest_cfg)
 
                 frame = np.frombuffer(pcm_chunk, dtype=np.int16)
-                gated = squelch.process(
-                    frame, cfg.sample_rate, rf_snr_db=getattr(receiver, "rf_snr_db", None)
-                )
+                rf_snr_db = getattr(receiver, "rf_snr_db", None)
+                gated = squelch.process(frame, cfg.sample_rate, rf_snr_db=rf_snr_db)
                 encoder.write(gated.tobytes())
+                recorder.feed(squelch.config, gated, squelch.is_open, rf_snr_db)
             else:
                 # The loop ran out on its own (rtl_fm exited/EOF) rather than
                 # via the `break` above - that's not a deliberate stop.
@@ -158,6 +160,7 @@ class AudioPipeline:
         finally:
             receiver.stop()
             encoder.stop()
+            recorder.close()
             output_thread.join(timeout=2)
 
         if unexpected_exit:
