@@ -199,8 +199,8 @@ are **in memory only — lost on service restart.**
 | 09 | 156.450 MHz | Bridge of Lions |
 | 13 | 156.650 MHz | Bridge-to-bridge |
 | 16 | 156.800 MHz | Distress / calling |
-| 68 | 156.425 MHz | |
-| 69 | 156.475 MHz | Monitored by Comachee Cove Yacht Harbor, Conch House Marina Resort (added 2026-10-01) |
+| 68 | 156.425 MHz | Monitored by Comachee Cove Yacht Harbor |
+| 69 | 156.475 MHz | Monitored by Conch House Marina Resort (added 2026-10-01) |
 | 71 | 156.575 MHz | Monitored by St. Augustine Municipal Marina |
 | 72 | 156.625 MHz | St. Augustine Cruisers Net (added 2026-10-01) |
 | wx | 162.425 MHz | NOAA WX4 — continuous but weak here (~+10 dB); the only WX station received. Good weak-signal test |
