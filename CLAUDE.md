@@ -290,16 +290,22 @@ metric = (8–16 kHz energy) − (0.3–3 kHz energy):
   At home there is currently **no real signal to test squelch against** —
   need the whip outdoors, or another narrowband-FM source (e.g. a local 2 m
   amateur repeater, receive-only).
-- **2026-10-01, whip moved above the roof line (temporary spot, metal roof
-  below):** recorder caught real traffic for the first time at home — ch09
-  16 clips 05:58–08:33 at +13…+17 dB, ch16 3 clips +13…+19, ch68 +11.
+- **2026-10-01, whip moved above the roof line ~10:45 (temporary spot, metal
+  roof below).** Correction: the morning clips (ch09 16 clips 05:58–08:33 at
+  +13…+17 dB, ch16 3 clips +13…+19) were recorded **before** the move, with
+  the whip still indoors at the window — the indoor spot does hear bridge
+  traffic; last night was just quiet. Only ch68 10:49 (+11) is post-move.
   rtl_power 10:55: NOAA WX4 162.425 now +3 dB (was 0), 162.400 +2 (both
   below squelch). FM broadcast strongest +27 dB (was +18) but individual
   stations ±9 dB — the marine whip is off-resonance at FM, poor yardstick.
   Marine band quiet channels ≈0 dB (ch16 +1.7 median — unexplained, below
   threshold). **Band noise floor −23.6 dB vs −29.4 dB on the boat** (same
-  dongle/gain/settings) ⇒ ~6 dB more noise here — likely local RFI; a
-  coax-disconnected floor measurement would confirm external vs receiver. Don't transmit on marine VHF from land
+  dongle/gain/settings). **Coax disconnected: −30.4 dB** = the dongle's own
+  floor. So the boat was receiver-limited (+1 dB, RF-quiet) while the house
+  roof spot adds **~7 dB of external noise through the antenna** (house/
+  neighbour electronics or the metal roof). Target for antenna placement:
+  floor within 1–2 dB of −30.4 (`rtl_power -f 156.3M:156.9M:6250 -g 49.6
+  -i 1 -e 30s`, band median via tools/rf_baseline.py). Don't transmit on marine VHF from land
   (FCC: ship stations are for use on vessels).
 
 ## Open issues / backlog
