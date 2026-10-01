@@ -166,6 +166,9 @@
     .clip-sub { font-size: 12px; color: var(--muted); margin-top: 2px; }
     .sig { font-family: var(--mono); font-size: 12px; flex: none; }
     .sig.weak { color: var(--amber); } .sig.good { color: var(--cyan); } .sig.strong { color: var(--green); }
+    .tools { display: flex; gap: 8px; }
+    .tools a { flex: 1; text-align: center; color: var(--cyan); text-decoration: none; font-weight: 700; font-size: 14px;
+               background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 12px 6px; }
     .empty { color: var(--muted); font-size: 14px; padding: 12px 2px; }
   </style>
 </head>
@@ -209,6 +212,12 @@
 
     <h2>RECENT TRANSMISSIONS <a href="/radio/recordings/view">All recordings →</a></h2>
     <div id="clips" class="clips"><div class="empty">Loading…</div></div>
+
+    <h2>TOOLS</h2>
+    <div class="tools">
+      <a href="/radio/recordings/view">Recordings</a>
+      <a href="/radio/noise/view">Antenna noise meter</a>
+    </div>
     <audio id="clipAudio" preload="none"></audio>
   </div>
 
@@ -473,6 +482,10 @@
       setPill(wantAudio ? "LISTENING" : "TUNED", "listen");
       setReadout(sel.channel, "on"); markCards(sel.channel, "active");
       defaultStatus(wantAudio ? "Listening - audio opens when someone transmits." : "Radio is on " + label(sel.channel) + " - tap it to listen.");
+      scanResumeBtn.disabled = true;
+    } else if (sel.mode === "noise") {
+      setPill("NOISE METER", "scan"); setReadout(null); markCards(null);
+      defaultStatus("The radio is running the antenna noise meter (Noise meter page below).");
       scanResumeBtn.disabled = true;
     } else {
       setPill("IDLE"); setReadout(null); markCards(null);

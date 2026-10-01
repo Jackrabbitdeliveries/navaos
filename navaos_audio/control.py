@@ -43,6 +43,7 @@ from pathlib import Path
 from typing import Optional
 
 from .channel_manager import DEFAULT_SCAN_ORDER, SessionConflictError, channel_manager
+from .noise_meter import noise_meter as _noise_meter
 
 LEASE_S = 600
 ACTIVE_S = 15
@@ -55,7 +56,7 @@ DEFAULT_SCAN_ENABLED = os.environ.get("NAVAOS_DEFAULT_SCAN", "1") != "0"
 PIN_MAX_FAILURES = 5
 PIN_FAILURE_WINDOW_S = 600
 
-RADIO_ACTIONS = ("tune", "scan", "stop")      # queueable
+RADIO_ACTIONS = ("tune", "scan", "stop", "noise")   # queueable
 SETTINGS_ACTIONS = ("resume",)                # immediate-or-refused
 
 
@@ -78,8 +79,9 @@ def _configured_pin() -> Optional[str]:
 
 
 class ControlManager:
-    def __init__(self, cm=channel_manager):
+    def __init__(self, cm=channel_manager, meter=_noise_meter):
         self._cm = cm
+        self._meter = meter
         self._lock = threading.RLock()
         self._selection: dict = {"mode": "idle", "channel": None}
         self._holder: Optional[str] = None
@@ -170,6 +172,8 @@ class ControlManager:
                 return {"result": "joined", **self.status(client)}
             if action == "stop" and self._selection["mode"] == "idle":
                 return {"result": "joined", **self.status(client)}
+            if action == "noise" and self._selection["mode"] == "noise":
+                return {"result": "joined", **self.status(client)}
 
             mine = self._holder == client
             turn = self._turn_active()
@@ -221,6 +225,8 @@ class ControlManager:
 
     def _apply(self, action: str, channel: Optional[str]) -> None:
         cm = self._cm
+        if action in RADIO_ACTIONS and action != "noise":
+            self._meter.stop()
         if action == "tune":
             cm.stop_scan()
             if cm.status().get("mode") == "direct" and cm.status().get("channel") != channel:
@@ -235,12 +241,19 @@ class ControlManager:
             cm.stop_direct()
             cm.stop_scan()
             self._selection = {"mode": "idle", "channel": None}
+        elif action == "noise":
+            cm.stop_direct()
+            cm.stop_scan()
+            self._meter.start()
+            self._selection = {"mode": "noise", "channel": None}
         elif action == "resume":
             cm.resume_scan()
 
     def _reconcile(self) -> None:
         # A scan that died on its own (device error) leaves the selection stale.
         if self._selection["mode"] == "scan" and self._cm.status().get("mode") != "scan":
+            self._selection = {"mode": "idle", "channel": None}
+        if self._selection["mode"] == "noise" and not self._meter.running:
             self._selection = {"mode": "idle", "channel": None}
 
     def _tick_loop(self) -> None:
@@ -330,6 +343,13 @@ class ControlManager:
                     ),
                 },
             }
+
+    def touch(self, client: Optional[str]) -> None:
+        """Count as user activity (e.g. someone watching the noise meter), so
+        the 20-min default scan doesn't take the radio away mid-test."""
+        with self._lock:
+            self.heartbeat(client)
+            self._last_activity = time.monotonic()
 
     def selection(self) -> dict:
         with self._lock:

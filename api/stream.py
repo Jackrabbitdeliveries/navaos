@@ -1,5 +1,6 @@
 import json
 import re
+import time
 from pathlib import Path
 
 from fastapi import APIRouter, Header, HTTPException
@@ -8,6 +9,7 @@ from pydantic import BaseModel
 
 from navaos_audio.channel_manager import channel_manager, SessionConflictError
 from navaos_audio.control import ControlError, control
+from navaos_audio import noise_meter as nm
 from navaos_audio.recorder import last_heard, list_recordings, resolve_recording
 
 _TEMPLATES = Path(__file__).parent / "templates"
@@ -259,6 +261,48 @@ def update_params(channel: str, params: ChannelParams, client: str | None = None
     except KeyError:
         raise HTTPException(404, f"Unknown channel: {channel}")
     return cfg.__dict__
+
+
+# ---- noise meter ------------------------------------------------------
+# Start/stop it with POST /radio/control {"action": "noise"} / {"action": "stop"}.
+
+@router.get("/noise")
+def noise_readings(since: float = 0.0, client: str | None = None):
+    """Live noise-meter readings newer than `since` (epoch s). Polling this
+    while the meter runs counts as activity (holds off the default scan)."""
+    running = control.selection()["mode"] == "noise"
+    if running:
+        control.touch(client)
+    return {
+        "running": running,
+        "reference_db": nm.load_reference(),
+        "error": nm.noise_meter.error,
+        "readings": nm.noise_meter.readings(since) if running else [],
+    }
+
+
+class NoiseReference(BaseModel):
+    db: float | None = None     # omit = use the median of the last 10 s
+
+
+@router.post("/noise/reference")
+def set_noise_reference(req: NoiseReference, client: str | None = None,
+                        x_override_pin: str | None = Header(default=None)):
+    """Set the 'dongle's own floor' reference (measure with the coax off)."""
+    _check_settings(client, x_override_pin)
+    db = req.db
+    if db is None:
+        recent = nm.noise_meter.readings(time.time() - 10)
+        if not recent:
+            raise HTTPException(409, "No recent readings - start the noise meter first.")
+        db = float(sorted(r["floor_db"] for r in recent)[len(recent) // 2])
+    nm.save_reference(db)
+    return {"reference_db": nm.load_reference()}
+
+
+@router.get("/noise/view")
+def noise_page():
+    return HTMLResponse(_render("noise.html"))
 
 
 # ---- recordings -------------------------------------------------------

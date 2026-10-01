@@ -79,6 +79,11 @@ Legacy path (`ChannelConfig.receiver="rtl_fm"`): rtl_fm → AdaptiveSquelch
   as the player (keep the `:root` colour tokens in sync): photo strip header,
   channel filter chips, Today/Yesterday/date groups, play/pause + tap-to-seek
   progress bar, download link, signal label (WEAK <15 / GOOD <30 / STRONG dB).
+- `api/templates/noise.html` — antenna noise meter page: hero figure (dB
+  above dongle floor, Quiet ≤2 / Some noise ≤5 / Noisy), meter bar, 5-min
+  line chart with reference line + crosshair tooltip, per-channel bars,
+  "Mark this spot" table (stored in that browser's localStorage). Linked
+  from the player's TOOLS row.
 - `static/` — images served at `/radio/static/<name>` (e.g. `hero.jpg`, the
   player header photo; page falls back to a gradient if it's missing).
 - `navaos_audio/` package:
@@ -137,6 +142,12 @@ Legacy path (`ChannelConfig.receiver="rtl_fm"`): rtl_fm → AdaptiveSquelch
     importing `control.py` creates the real instance, which would otherwise
     grab the dongle (this happened once in testing; harmless only because the
     live service held the device).
+  - `noise_meter.py` — live RF noise meter for antenna placement: runs
+    `rtl_power` continuously (same settings as the baselines), keeps 10 min of
+    {floor_db, per-channel dB}. Reference = dongle floor with coax off
+    (default −30.4, overridable via `~/navaos-data/noise_reference_db`). Runs
+    only as radio mode `noise` (`POST /control {"action":"noise"}`), so it
+    follows the turn/queue rules; tune/scan/stop stop it.
   - `channel_manager.py` — **the single hardware arbiter**: only one session
     (direct tune OR scan) may own the dongle; conflicts → HTTP 409.
     `DEFAULT_SCAN_ORDER = ["09", "13", "16", "68", "71"]`.
@@ -157,6 +168,8 @@ Settings endpoints take `?client=` and an `X-Override-Pin` header.
 `GET /status`, `GET|PATCH /{channel}/params`, `GET /player`,
 `GET /recordings[?channel=&limit=]` (JSON, each clip has `ts` epoch seconds),
 `GET /recordings/last-heard` (newest clip per channel), `GET /static/{name}`,
+`GET /noise?since=&client=` (meter readings; polling counts as activity),
+`POST /noise/reference` (settings-locked), `GET /noise/view` (meter page),
 `GET /recordings/file/{day}/{name}`
 (filename-validated), `GET /recordings/view` (page, linked from the player).
 
