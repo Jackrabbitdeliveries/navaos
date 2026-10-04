@@ -342,6 +342,23 @@ metric = (8–16 kHz energy) − (0.3–3 kHz energy):
   -i 1 -e 30s`, band median via tools/rf_baseline.py). Don't transmit on marine VHF from land
   (FCC: ship stations are for use on vessels).
 
+### AIS (exploration, 2026-10-04)
+- Decoder: **AIS-catcher v0.70** built from source in `~/src/AIS-catcher/build`
+  (not installed system-wide; no sudo). Community feed (`-X`) deliberately off.
+- One-off survey runner `~/navaos-data/ais_capture.sh SECONDS OUT.jsonl`: takes
+  the radio via `/control` (stop), runs AIS-catcher (`-o 5 -M DT`), aborts at
+  once if anyone else takes the radio, restores the default scan after.
+  Report: `python3 tools/ais_report.py OUT.jsonl [minutes]` (distances from the
+  Bridge of Lions).
+- First survey (whip above roof line, 08:55–09:25): 870 msgs (29/min), **33
+  vessels, 32 named** in 30 min — 31 Class B (mostly moored sailboats), 2 Class
+  A (MARBRI under way 13 kn 3 nm E). Clusters ~1 nm S (municipal mooring
+  field), ~1.5 nm N (Camachee Cove area), 0.4–0.8 nm. Signals strong (−0 to
+  −23 dBFS) ⇒ range limited by what's out there, not the receiver. No base
+  stations, AtoN or commercial traffic seen. Dongle ppm ≈ −2.6.
+- Not yet decided: display/timeshare design (see chat 2026-10-04 suggestions:
+  bridge-approach watch, who's-talking per recording, map, watch-list alerts).
+
 ## Open issues / backlog
 
 (No GitHub issues exist yet — the deploy key can't use the issues API. Track
