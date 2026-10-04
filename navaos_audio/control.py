@@ -298,6 +298,7 @@ class ControlManager:
             return False
         self._ais_active = True
         self._ais_until = now + AIS_WINDOW_S
+        print(f"AIS-WINDOW-START {AIS_WINDOW_S}s", flush=True)
         return True
 
     def _maybe_ais(self, now: float) -> None:
