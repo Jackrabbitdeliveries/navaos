@@ -370,7 +370,7 @@ metric = (8–16 kHz energy) − (0.3–3 kHz energy):
 - Routes: `GET /ais/vessels?max_age_h=` (latest state + timeshare status),
   `GET /ais/vessel/{mmsi}` (with track), `POST /ais/now` (settings-permission;
   refused while someone listens), `GET /ais/view` (Ship map page,
-  `api/templates/ais.html`: Leaflet from cdnjs, CARTO dark + OpenSeaMap
+  `api/templates/ais.html`: Leaflet from cdnjs, OSM tiles darkened by CSS (CARTO now needs an API key) + OpenSeaMap
   seamarks, arrows = moving / dots = stopped, colour by type with legend,
   labels at zoom ≥15, tap → details + track + MarineTraffic link, list sorted
   by distance from the Bridge of Lions). Player shows an "AIS m:ss" pill and

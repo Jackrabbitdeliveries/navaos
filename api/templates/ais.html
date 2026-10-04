@@ -47,6 +47,7 @@
 
     #map { height: 58vh; min-height: 320px; border-radius: 14px; border: 1px solid var(--line); background: #1b1b1b; }
     .leaflet-container { font: inherit; }
+    .osm-dark { filter: invert(1) hue-rotate(180deg) brightness(0.85) contrast(0.9) saturate(0.6); }
     .leaflet-control-attribution { background: rgba(7,17,31,0.7) !important; color: var(--muted) !important; font-size: 10px; }
     .leaflet-control-attribution a { color: var(--cyan) !important; }
     .vessel svg { overflow: visible; filter: drop-shadow(0 0 2px rgba(0,0,0,0.9)); }
@@ -190,9 +191,11 @@
 
   // ---------- map ----------
   const map = L.map("map", { zoomControl: true, attributionControl: true }).setView([REF.lat, REF.lon], 13);
-  L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png", {
-    maxZoom: 19, subdomains: "abcd",
-    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a>',
+  // OpenStreetMap's own tiles (no API key), darkened by CSS (.osm-dark) to fit
+  // the theme. CARTO's dark tiles started requiring a key (2026-10-04).
+  L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
+    maxZoom: 19, className: "osm-dark",
+    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
   }).addTo(map);
   L.tileLayer("https://tiles.openseamap.org/seamark/{z}/{x}/{y}.png", {
     maxZoom: 18, opacity: 0.9, attribution: '&copy; <a href="https://www.openseamap.org">OpenSeaMap</a>',
