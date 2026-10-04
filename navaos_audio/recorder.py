@@ -147,6 +147,8 @@ class TransmissionRecorder:
         final = tmp.parent / f"{self._started.strftime('%H%M%S')}_ch{self._channel}_{duration:.1f}s_{snr}dB.mp3"
         tmp.rename(final)
         print(f"RECORDER-SAVED {final.parent.name}/{final.name}", flush=True)
+        from .transcriber import transcriber   # late import: transcriber imports this module
+        transcriber.enqueue(final)
         self._prune()
 
     def _abort(self) -> None:
@@ -200,8 +202,13 @@ def mark_listened(paths: list[str], listened: bool = True, base_dir: Path = RECO
     return len(valid)
 
 
-def list_recordings(base_dir: Path = RECORDINGS_DIR, channel: Optional[str] = None, limit: int = 500) -> list[dict]:
-    """Newest-first clip metadata, parsed from filenames."""
+def list_recordings(base_dir: Path = RECORDINGS_DIR, channel: Optional[str] = None, limit: int = 500,
+                    q: Optional[str] = None) -> list[dict]:
+    """Newest-first clip metadata, parsed from filenames, plus the transcript
+    (if done). `q` keeps only clips whose transcript or vessel tags contain
+    every word of it (case-insensitive)."""
+    from .transcriber import read_sidecar
+    terms = [t for t in (q or "").lower().split() if t]
     out: list[dict] = []
     heard = load_listened(base_dir)
     base = Path(base_dir)
@@ -212,6 +219,11 @@ def list_recordings(base_dir: Path = RECORDINGS_DIR, channel: Optional[str] = No
             m = CLIP_RE.match(f.name)
             if not m or (channel and m["channel"] != channel):
                 continue
+            stt = read_sidecar(f)
+            if terms:
+                hay = ((stt or {}).get("text", "") + " " + " ".join(v["name"] for v in (stt or {}).get("vessels", []))).lower()
+                if not all(t in hay for t in terms):
+                    continue
             hms = m["hms"]
             when = f"{day.name}T{hms[:2]}:{hms[2:4]}:{hms[4:]}"
             out.append({
@@ -225,6 +237,8 @@ def list_recordings(base_dir: Path = RECORDINGS_DIR, channel: Optional[str] = No
                 "peak_rf_snr_db": None if m["snr"] == "na" else int(m["snr"]),
                 "bytes": f.stat().st_size,
                 "listened": f"{day.name}/{f.name}" in heard,
+                "transcript": None if stt is None else stt.get("text", ""),
+                "vessels": [] if stt is None else stt.get("vessels", []),
             })
             if len(out) >= limit:
                 return out

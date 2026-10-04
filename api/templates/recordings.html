@@ -103,6 +103,18 @@
     .summary-row .summary { margin: 0; }
     .linkbtn { font: inherit; font-size: 13px; color: var(--cyan); background: none; border: none; cursor: pointer; padding: 0; white-space: nowrap; }
     .linkbtn[hidden] { display: none; }
+    .searchbox { margin-top: 12px; }
+    .searchbox input { width: 100%; font: inherit; font-size: 15px; color: var(--text); background: var(--panel);
+      border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; outline: none; }
+    .searchbox input:focus { border-color: var(--cyan); }
+    .tx { font-size: 13px; line-height: 1.4; color: #c9d6e6; margin: 4px 0 2px 50px; cursor: pointer;
+          display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+    .tx.open { -webkit-line-clamp: unset; display: block; }
+    .tx.pending, .tx.none { color: var(--muted); font-style: italic; cursor: default; }
+    .tx mark { background: rgba(79,209,255,0.25); color: var(--text); border-radius: 3px; padding: 0 2px; }
+    .vtags { display: flex; flex-wrap: wrap; gap: 6px; margin: 4px 0 2px 50px; }
+    .vtag { font-size: 12px; font-weight: 700; color: var(--cyan); text-decoration: none; border: 1px solid rgba(79,209,255,0.5);
+            border-radius: 999px; padding: 2px 8px; }
     .clip { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 8px 10px; }
     .clip.playing { border-color: var(--cyan); box-shadow: 0 0 14px rgba(79,209,255,0.18); }
     .clip-row { display: flex; align-items: center; gap: 10px; }
@@ -140,6 +152,7 @@
   </div>
 
   <div class="wrap">
+    <div class="searchbox"><input id="search" type="search" placeholder="Search what was said… (e.g. opening, mooring, Sea Angel)" autocomplete="off" enterkeyhint="search"></div>
     <div id="filters" class="filters"></div>
     <div class="summary-row">
       <div id="summary" class="summary">Loading…</div>
@@ -206,9 +219,28 @@
     el.appendChild(u);
   }
 
+  // Search term highlighting, built from text nodes (transcripts are untrusted text).
+  function highlight(elm, text) {
+    const terms = query.toLowerCase().split(/\s+/).filter(Boolean);
+    if (!terms.length) { elm.textContent = text; return; }
+    const re = new RegExp("(" + terms.map(t => t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|") + ")", "gi");
+    for (const part of text.split(re)) {
+      if (!part) continue;
+      if (terms.includes(part.toLowerCase())) elm.appendChild(el("mark", null, part));
+      else elm.appendChild(document.createTextNode(part));
+    }
+  }
+
+  let query = "", searchTimer = null, sttStatus = null;
+  document.getElementById("search").addEventListener("input", ev => {
+    clearTimeout(searchTimer);
+    searchTimer = setTimeout(() => { query = ev.target.value.trim(); load(); }, 350);
+  });
+
   async function load() {
-    const url = "/radio/recordings?limit=1000" + (filter ? "&channel=" + filter : "") + "&x=" + Date.now();
+    const url = "/radio/recordings?limit=1000" + (filter ? "&channel=" + filter : "") + (query ? "&q=" + encodeURIComponent(query) : "") + "&x=" + Date.now();
     try { clips = await (await fetch(url)).json(); } catch (e) { return; }
+    try { sttStatus = await (await fetch("/radio/recordings/stt-status?x=" + Date.now())).json(); } catch (e) {}
     renderFilters();
     render();
   }
@@ -236,9 +268,9 @@
     const list = document.getElementById("list");
     const total = clips.reduce((a, c) => a + c.duration_s, 0);
     const unheard = clips.filter(c => !c.listened);
-    document.getElementById("summary").textContent = clips.length
-      ? `${clips.length} transmission${clips.length === 1 ? "" : "s"} · ${fmtDur(total)} · ${unheard.length} unheard`
-      : "";
+    document.getElementById("summary").textContent = (clips.length
+      ? `${clips.length} ${query ? "match" + (clips.length === 1 ? "" : "es") : "transmission" + (clips.length === 1 ? "" : "s")} · ${fmtDur(total)} · ${unheard.length} unheard`
+      : "") + (sttStatus && sttStatus.enabled && sttStatus.pending ? ` · transcribing ${sttStatus.pending} clip${sttStatus.pending === 1 ? "" : "s"}…` : "");
     document.getElementById("markAll").hidden = !unheard.length;
 
     let convos = conversations(clips);
@@ -246,7 +278,8 @@
     list.replaceChildren();
     if (!convos.length) {
       const e = el("div", "empty");
-      e.textContent = unheardOnly ? "You're all caught up - nothing unheard." :
+      e.textContent = query ? `Nothing said matches "${query}"` + (sttStatus && sttStatus.pending ? " yet - some clips are still being transcribed." : ".") :
+        unheardOnly ? "You're all caught up - nothing unheard." :
         `No transmissions recorded${filter ? " on " + label(filter) : ""} yet. They appear here automatically whenever the squelch opens.`;
       list.appendChild(e);
       return;
@@ -310,7 +343,26 @@
     const dl = el("a", "dl", "⤓"); dl.href = srcOf(c.path); dl.setAttribute("download", ""); dl.title = "Download";
     r.append(el("span", "dot"), btn, main, sig, dl);
     const prog = el("div", "progress"); prog.onclick = ev => seek(ev, prog); prog.appendChild(el("div", "bar"));
-    row.append(r, prog);
+    row.append(r);
+    if (c.transcript === null || c.transcript === undefined) row.appendChild(el("div", "tx pending", "transcribing…"));
+    else if (!c.transcript) row.appendChild(el("div", "tx none", "(no speech recognised)"));
+    else {
+      const tx = el("div", "tx");
+      highlight(tx, c.transcript);
+      tx.onclick = () => tx.classList.toggle("open");
+      row.appendChild(tx);
+    }
+    if (c.vessels && c.vessels.length) {
+      const tags = el("div", "vtags");
+      for (const v of c.vessels) {
+        const a = el("a", "vtag", "⚓ " + v.name);
+        a.href = "/radio/ais/view#mmsi=" + encodeURIComponent(v.mmsi);
+        a.title = "Name heard in the audio - show on the ship map";
+        tags.appendChild(a);
+      }
+      row.appendChild(tags);
+    }
+    row.appendChild(prog);
     return row;
   }
 

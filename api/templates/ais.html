@@ -377,7 +377,14 @@
   }
 
   renderChips();
-  load();
+  // Deep link from a recording's vessel tag: /radio/ais/view#mmsi=123456789
+  const deep = (location.hash.match(/mmsi=(\d+)/) || [])[1];
+  load().then(() => {
+    if (!deep) return;
+    const id = Number(deep);
+    if (!vessels.some(v => v.mmsi === id)) { maxAgeH = 168; renderChips(); return load().then(() => select(id, true)); }
+    select(id, true);
+  });
   setInterval(() => load(), 10000);
 </script>
 </body>

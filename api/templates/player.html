@@ -169,6 +169,7 @@
     .clip.unheard .clip-dot { background: var(--cyan); }
     .clip-main { flex: 1; min-width: 0; }
     .clip-title { font-size: 14px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .clip-tx { font-size: 12px; color: #c9d6e6; margin-top: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .clip-sub { font-size: 12px; color: var(--muted); margin-top: 2px; }
     .sig { font-family: var(--mono); font-size: 12px; flex: none; }
     .sig.weak { color: var(--amber); } .sig.good { color: var(--cyan); } .sig.strong { color: var(--green); }
@@ -359,6 +360,9 @@
 
   function sigClass(db) { return db === null ? "" : db < 15 ? "weak" : db < 30 ? "good" : "strong"; }
 
+  // Transcripts are text recognised from radio audio - escape before using in HTML.
+  function esc(t) { return String(t).replace(/[&<>"']/g, ch => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[ch]); }
+
   async function loadActivity() {
     try {
       lastHeard = await (await fetch("/radio/recordings/last-heard?x=" + Date.now())).json();
@@ -376,6 +380,7 @@
           <div class="clip-main">
             <div class="clip-title">Ch ${label(c.channel)}${shortName(c.channel) ? " · " + shortName(c.channel) : ""}</div>
             <div class="clip-sub">${ago(c.ts)} · ${c.duration_s.toFixed(1)} s</div>
+            ${c.transcript ? `<div class="clip-tx">${esc(c.transcript)}</div>` : ""}
           </div>
           <div class="sig ${sigClass(c.peak_rf_snr_db)}">${c.peak_rf_snr_db === null ? "" : "+" + c.peak_rf_snr_db + " dB"}</div>
         </div>`).join("");

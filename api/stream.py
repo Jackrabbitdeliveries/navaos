@@ -354,9 +354,17 @@ def ais_page():
 # ---- recordings -------------------------------------------------------
 
 @router.get("/recordings")
-def recordings(channel: str | None = None, limit: int = 500):
-    """Saved transmissions, newest first (see navaos_audio/recorder.py)."""
-    return list_recordings(channel=channel.lower() if channel else None, limit=min(limit, 5000))
+def recordings(channel: str | None = None, limit: int = 500, q: str | None = None):
+    """Saved transmissions, newest first (see navaos_audio/recorder.py), with
+    transcripts; `q` searches transcripts and vessel tags."""
+    return list_recordings(channel=channel.lower() if channel else None, limit=min(limit, 5000), q=q)
+
+
+@router.get("/recordings/stt-status")
+def recordings_stt_status():
+    from navaos_audio.transcriber import STT_ENABLED, transcriber
+    return {"enabled": STT_ENABLED and transcriber.available, "pending": transcriber.pending(),
+            "done": transcriber.done, "failed": transcriber.failed, "current": transcriber.current}
 
 
 class ListenedRequest(BaseModel):

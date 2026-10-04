@@ -379,7 +379,7 @@ metric = (8–16 kHz energy) − (0.3–3 kHz energy):
 - Ideas not built yet: bridge-approach watch, who's-talking per recording,
   watch-list / SART-MOB alerts.
 
-### Speech-to-text test (2026-10-04) — not built into the app yet
+### Speech-to-text (tested and built 2026-10-04)
 - Kevin asked for vessel names on recording tiles. VHF voice carries **no
   transmitter ID** (only DSC calls on ch70 carry an MMSI), so the only route is
   transcribing what's said and matching names against the AIS DB.
@@ -393,9 +393,25 @@ metric = (8–16 kHz energy) − (0.3–3 kHz energy):
 - `tools/stt_names.py` fuzzy-matches transcripts to AIS names: **0 matches** —
   callers rarely say their own boat name, and named boats (e.g. "Sea Angel")
   weren't in the AIS DB.
-- Proposed, awaiting Kevin's decision: transcribe every clip in the background
-  (+ one-time backfill of ~475 clips), show transcript + search on the
-  recordings page, ⚓ vessel tag only when a name matches.
+- **Built:** `navaos_audio/transcriber.py` — one niced worker thread (whisper
+  `-t 2`), started from `main.py` lifespan. Recorder enqueues every saved clip
+  (live first); backfill of clips without a sidecar runs newest-first when
+  idle. Result in `<clip>.mp3.stt.json` {text, vessels[{name,mmsi}], model,
+  at} next to the clip (pruned with it). `clean()` drops [BLANK_AUDIO]-style
+  tokens and the "Thank you." hallucination; failures write an empty sidecar
+  with `error` so they don't block the backlog. Vessel tags = spoken names
+  fuzzy-matched (difflib ≥0.82, see `match_vessels`) against AIS names known
+  at transcription time — kept strict on purpose ("long shallow" already
+  scores 0.87 vs LONG SHADOW; "sweet emotion" vs SWEET EMOCEAN is 0.77, no
+  match). `NAVAOS_STT=0` disables (tests MUST set it).
+- API: `/recordings` items gain `transcript` (null = not done yet, "" = no
+  speech) and `vessels`; `?q=` searches transcripts + tags (all words);
+  `GET /recordings/stt-status` {enabled, pending, done, failed, current}.
+- UI: recordings page search box, transcript under each clip (3 lines, tap to
+  expand, matches highlighted via text nodes), "transcribing…" / "(no speech
+  recognised)", ⚓ tags linking `/radio/ais/view#mmsi=…` (map deep-links and
+  selects the vessel); player recent strip shows a one-line transcript
+  (HTML-escaped).
 
 ## Open issues / backlog
 

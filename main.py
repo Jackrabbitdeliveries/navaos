@@ -4,10 +4,12 @@ from fastapi import FastAPI
 from datetime import datetime
 from api.stream import router as stream_router
 from navaos_audio.channel_manager import channel_manager
+from navaos_audio.transcriber import transcriber
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    transcriber.start()   # background speech-to-text of recordings (NAVAOS_STT=0 disables)
     yield
     channel_manager.shutdown()
 
@@ -35,7 +37,8 @@ def status():
             "radio_stream": "available",
             "bilge": "not_installed",
             "battery": "not_installed",
-            "ais": "available_later",
+            "ais": "available",
+            "transcription": "available",
             "camera": "not_installed",
         },
     }
