@@ -1,0 +1,381 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#07111f">
+  <title>Nava VHF · Ship map</title>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+  <style>
+    /* Same palette as player.html - keep in sync. */
+    :root {
+      color-scheme: dark;
+      --bg: #07111f; --panel: #0f1f36; --panel-2: #132845; --line: #1f3b60;
+      --text: #e6eef8; --muted: #8aa0b8; --cyan: #4fd1ff; --amber: #ffb547; --red: #ff6b6b;
+      /* vessel categories (always paired with shape, legend, labels and the list) */
+      --sail: #4fd1ff; --power: #c084fc; --comm: #ffb547; --other: #8aa0b8;
+      --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: var(--bg); color: var(--text);
+           font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif; -webkit-tap-highlight-color: transparent; }
+    .wrap { max-width: 900px; margin: 0 auto; padding: 0 14px 40px; }
+    .hero { position: relative; height: 110px; max-width: 900px; margin: 0 auto;
+      background: linear-gradient(180deg, rgba(7,17,31,0.2) 0%, rgba(7,17,31,0.7) 70%, var(--bg) 100%),
+        url("/radio/static/hero.jpg") center 38% / cover no-repeat,
+        radial-gradient(ellipse at 70% 20%, #1b3b6b 0%, #0b1d3a 45%, var(--bg) 100%); }
+    .hero-bar { position: absolute; left: 16px; right: 16px; bottom: 12px; display: flex; align-items: flex-end; justify-content: space-between; }
+    .title { font-size: 22px; font-weight: 800; letter-spacing: 0.04em; text-shadow: 0 2px 12px rgba(0,0,0,0.6); }
+    .title .place { display: block; font-size: 11px; font-weight: 700; letter-spacing: 0.2em; color: var(--cyan); margin-bottom: 4px; }
+    .title small.tagline { display: block; font-style: italic; letter-spacing: 0.03em; font-size: 13px; font-weight: 500; color: #b9c8da; margin-top: 3px; }
+    .back { color: var(--cyan); text-decoration: none; font-size: 14px; font-weight: 600; padding: 6px 10px;
+            border: 1px solid var(--line); border-radius: 999px; background: rgba(7,17,31,0.75); }
+
+    .bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 12px 0 8px; }
+    .status { flex: 1; min-width: 200px; font-size: 13px; color: var(--muted); }
+    .status b { color: var(--text); font-weight: 600; }
+    .status.live b { color: var(--cyan); }
+    .btn { font: inherit; font-size: 13px; font-weight: 700; color: var(--cyan); background: var(--panel);
+           border: 1px solid var(--cyan); border-radius: 999px; padding: 7px 12px; cursor: pointer; }
+    .btn:disabled { opacity: 0.4; cursor: default; }
+    .chips { display: flex; gap: 6px; flex-wrap: wrap; }
+    .chip { font: inherit; font-size: 13px; font-weight: 700; font-family: var(--mono); color: var(--muted); background: var(--panel);
+            border: 1px solid var(--line); border-radius: 999px; padding: 6px 11px; cursor: pointer; }
+    .chip.active { color: var(--bg); background: var(--cyan); border-color: var(--cyan); }
+    .msg { font-size: 13px; color: var(--amber); min-height: 16px; margin-bottom: 6px; }
+
+    #map { height: 58vh; min-height: 320px; border-radius: 14px; border: 1px solid var(--line); background: #1b1b1b; }
+    .leaflet-container { font: inherit; }
+    .leaflet-control-attribution { background: rgba(7,17,31,0.7) !important; color: var(--muted) !important; font-size: 10px; }
+    .leaflet-control-attribution a { color: var(--cyan) !important; }
+    .vessel svg { overflow: visible; filter: drop-shadow(0 0 2px rgba(0,0,0,0.9)); }
+    .vessel.stale { opacity: 0.45; }
+    .vessel.selected svg { filter: drop-shadow(0 0 6px #fff); }
+    .vlabel { background: rgba(7,17,31,0.8); border: none; box-shadow: none; color: var(--text); font-size: 11px; font-weight: 600; padding: 1px 5px; }
+    .vlabel::before { display: none; }
+    .map-nolabels .vlabel { display: none; }
+    .ref-icon { color: #fff; font-size: 11px; font-weight: 700; white-space: nowrap; text-shadow: 0 0 4px #000, 0 0 4px #000; }
+
+    .legend { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 12px; color: var(--muted); margin: 8px 2px 0; align-items: center; }
+    .legend span { display: inline-flex; align-items: center; gap: 5px; }
+    .sw { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
+
+    .card { background: linear-gradient(160deg, var(--panel-2), var(--panel)); border: 1px solid var(--line); border-radius: 14px; padding: 14px; margin-top: 12px; }
+    .card[hidden] { display: none; }
+    .d-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; }
+    .d-name { font-size: 20px; font-weight: 800; }
+    .d-type { font-size: 13px; color: var(--muted); margin-top: 2px; }
+    .x { font: inherit; background: none; border: 1px solid var(--line); color: var(--muted); border-radius: 8px; padding: 4px 9px; cursor: pointer; }
+    .d-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 10px 14px; margin-top: 12px; }
+    .d-grid div { font-size: 15px; font-variant-numeric: tabular-nums; }
+    .d-grid small { display: block; font-size: 11px; letter-spacing: 0.08em; color: var(--muted); margin-bottom: 2px; }
+    .d-links { margin-top: 12px; font-size: 13px; }
+    .d-links a { color: var(--cyan); }
+
+    h2 { font-size: 12px; letter-spacing: 0.18em; color: var(--muted); font-weight: 700; margin: 22px 2px 8px; }
+    table { width: 100%; border-collapse: collapse; font-size: 14px; }
+    th { text-align: left; font-size: 11px; letter-spacing: 0.08em; color: var(--muted); font-weight: 700; padding: 6px 4px; border-bottom: 1px solid var(--line); }
+    td { padding: 9px 4px; border-bottom: 1px solid #183152; }
+    tr.row { cursor: pointer; }
+    tr.row.sel td { background: rgba(79,209,255,0.08); }
+    td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; font-family: var(--mono); font-size: 13px; }
+    .nm { font-weight: 600; }
+    .sub { color: var(--muted); font-size: 12px; }
+    .empty { color: var(--muted); font-size: 14px; padding: 16px 4px; }
+  </style>
+</head>
+<body>
+  <div class="hero">
+    <div class="hero-bar">
+      <div class="title"><span class="place">ST. AUGUSTINE, FL</span>Ship map<small class="tagline">Live from onboard SV Nava</small></div>
+      <a class="back" href="/radio/player">← Player</a>
+    </div>
+  </div>
+
+  <div class="wrap">
+    <div class="bar">
+      <div id="status" class="status">Loading…</div>
+      <button id="nowBtn" class="btn" onclick="updateNow()">⟳ Update now</button>
+    </div>
+    <div class="bar">
+      <div class="chips" id="ageChips"></div>
+      <div class="chips"><button id="movingChip" class="chip" onclick="toggleMoving()">MOVING ONLY</button></div>
+    </div>
+    <div id="msg" class="msg"></div>
+
+    <div id="map" role="region" aria-label="Map of vessels heard by AIS"></div>
+    <div class="legend">
+      <span><i class="sw" style="background:var(--sail)"></i>Sailing</span>
+      <span><i class="sw" style="background:var(--power)"></i>Power / pleasure</span>
+      <span><i class="sw" style="background:var(--comm)"></i>Commercial</span>
+      <span><i class="sw" style="background:var(--other)"></i>Other / unknown</span>
+      <span>▲ moving · ● stopped · faded = not heard in the last hour</span>
+    </div>
+
+    <div id="detail" class="card" hidden></div>
+
+    <h2 id="listTitle">VESSELS</h2>
+    <div class="card" style="padding:6px 10px">
+      <table>
+        <thead><tr><th>VESSEL</th><th class="num">FROM BRIDGE</th><th class="num">SPEED</th><th class="num">HEARD</th></tr></thead>
+        <tbody id="list"></tbody>
+      </table>
+    </div>
+  </div>
+
+<script>
+  const REF = { name: "Bridge of Lions", lat: 29.8925, lon: -81.3086 };
+  const STALE_S = 3600;
+  const clientId = (() => {
+    let id = null;
+    try { id = localStorage.getItem("navaos_client"); } catch (e) {}
+    if (!id) { id = (crypto.randomUUID ? crypto.randomUUID() : String(Math.random()).slice(2) + Date.now());
+               try { localStorage.setItem("navaos_client", id); } catch (e) {} }
+    return id;
+  })();
+  function savedPin() { try { return localStorage.getItem("navaos_pin"); } catch (e) { return null; } }
+
+  let vessels = [], ais = null, serverNow = Date.now() / 1000;
+  let maxAgeH = 24, movingOnly = false, selected = null, fitted = false;
+  const markers = new Map();
+  let trackLine = null;
+
+  // ---------- helpers ----------
+  const TYPE_NAMES = { 30: "Fishing", 31: "Towing", 32: "Towing (large)", 33: "Dredging", 34: "Diving", 35: "Military",
+    36: "Sailing", 37: "Pleasure craft", 50: "Pilot", 51: "Search & rescue", 52: "Tug", 53: "Port tender",
+    54: "Anti-pollution", 55: "Law enforcement", 58: "Medical" };
+  const BANDS = { 2: "Wing in ground", 4: "High-speed craft", 6: "Passenger", 7: "Cargo", 8: "Tanker", 9: "Other" };
+  const STATUS = { 0: "Under way (engine)", 1: "At anchor", 2: "Not under command", 3: "Restricted manoeuvrability",
+    4: "Constrained by draught", 5: "Moored", 6: "Aground", 7: "Fishing", 8: "Under way (sail)", 14: "AIS-SART active" };
+  function typeName(v) {
+    if (v.kind === "sart") return "Search & rescue transponder";
+    if (v.kind === "mob") return "Man-overboard beacon";
+    if (v.kind === "base") return "AIS base station";
+    if (v.kind === "aton") return "Aid to navigation";
+    const t = v.shiptype;
+    if (!t) return v.kind === "B" ? "Class B (type not sent yet)" : "Type not sent yet";
+    return TYPE_NAMES[t] || BANDS[Math.floor(t / 10)] || "Type " + t;
+  }
+  function category(v) {
+    if (v.kind === "sart" || v.kind === "mob") return "alert";
+    if (v.shiptype === 36) return "sail";
+    if (v.shiptype === 37 || (v.shiptype >= 30 && v.shiptype <= 34) || (!v.shiptype && v.kind === "B")) return "power";
+    if (v.kind === "A" && v.shiptype) return "comm";
+    return "other";
+  }
+  const COLOR = { sail: "var(--sail)", power: "var(--power)", comm: "var(--comm)", other: "var(--other)", alert: "var(--red)" };
+  function nm(lat1, lon1, lat2, lon2) {
+    const r = Math.PI / 180, p1 = lat1 * r, p2 = lat2 * r;
+    const a = Math.sin((p2 - p1) / 2) ** 2 + Math.cos(p1) * Math.cos(p2) * Math.sin((lon2 - lon1) * r / 2) ** 2;
+    return 2 * 3440.065 * Math.asin(Math.sqrt(a));
+  }
+  function dir(lat, lon) {
+    const r = Math.PI / 180, dl = (lon - REF.lon) * r;
+    const b = Math.atan2(Math.sin(dl) * Math.cos(lat * r), Math.cos(REF.lat * r) * Math.sin(lat * r) - Math.sin(REF.lat * r) * Math.cos(lat * r) * Math.cos(dl)) / r;
+    return "N NE E SE S SW W NW".split(" ")[Math.round(((b + 360) % 360) / 45) % 8];
+  }
+  function ago(ts) {
+    const s = Math.max(0, serverNow - ts);
+    if (s < 90) return "just now";
+    if (s < 3600) return Math.round(s / 60) + " min ago";
+    if (s < 86400) return Math.round(s / 3600) + " h ago";
+    return Math.round(s / 86400) + " d ago";
+  }
+  function fmt(sec) { sec = Math.max(0, Math.round(sec)); return Math.floor(sec / 60) + ":" + String(sec % 60).padStart(2, "0"); }
+  function moving(v) { return v.sog != null && v.sog >= 0.5 && v.sog < 102.3; }
+  function displayName(v) { return v.name || ("MMSI " + v.mmsi); }
+  function el(tag, cls, text) { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; }
+  function msg(t) { document.getElementById("msg").textContent = t || ""; }
+
+  // ---------- map ----------
+  const map = L.map("map", { zoomControl: true, attributionControl: true }).setView([REF.lat, REF.lon], 13);
+  L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png", {
+    maxZoom: 19, subdomains: "abcd",
+    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a>',
+  }).addTo(map);
+  L.tileLayer("https://tiles.openseamap.org/seamark/{z}/{x}/{y}.png", {
+    maxZoom: 18, opacity: 0.9, attribution: '&copy; <a href="https://www.openseamap.org">OpenSeaMap</a>',
+  }).addTo(map);
+  L.marker([REF.lat, REF.lon], { interactive: false, keyboard: false,
+    icon: L.divIcon({ className: "", html: '<div class="ref-icon">⌂ Bridge of Lions</div>', iconSize: [110, 14], iconAnchor: [8, 7] }) }).addTo(map);
+  function labelsByZoom() { document.getElementById("map").classList.toggle("map-nolabels", map.getZoom() < 15); }
+  map.on("zoomend", labelsByZoom); labelsByZoom();
+
+  function iconFor(v) {
+    const c = COLOR[category(v)];
+    const stale = serverNow - (v.pos_ts || v.last_seen) > STALE_S;
+    let svg;
+    if (moving(v)) {
+      const rot = (v.heading != null && v.heading < 360) ? v.heading : (v.cog != null && v.cog < 360 ? v.cog : 0);
+      svg = `<svg width="22" height="22" viewBox="-11 -11 22 22"><g transform="rotate(${Number(rot)})">` +
+            `<path d="M0,-10 L6,8 L0,4 L-6,8 Z" fill="${c}" stroke="#07111f" stroke-width="1.5"/></g></svg>`;
+    } else {
+      svg = `<svg width="14" height="14" viewBox="-7 -7 14 14"><circle r="5" fill="${c}" stroke="#07111f" stroke-width="1.5"/></svg>`;
+    }
+    const size = moving(v) ? 22 : 14;
+    return L.divIcon({ className: "vessel" + (stale ? " stale" : "") + (selected === v.mmsi ? " selected" : ""), html: svg,
+                       iconSize: [size, size], iconAnchor: [size / 2, size / 2] });
+  }
+
+  function drawMarkers(list) {
+    const keep = new Set();
+    for (const v of list) {
+      if (v.lat == null) continue;
+      keep.add(v.mmsi);
+      let m = markers.get(v.mmsi);
+      if (!m) {
+        m = L.marker([v.lat, v.lon], { icon: iconFor(v), keyboard: true, title: displayName(v) }).addTo(map);
+        m.on("click", () => select(v.mmsi, false));
+        const lab = el("span", null, displayName(v));
+        m.bindTooltip(lab, { permanent: true, direction: "right", offset: [8, 0], className: "vlabel" });
+        markers.set(v.mmsi, m);
+      } else {
+        m.setLatLng([v.lat, v.lon]); m.setIcon(iconFor(v));
+        m.getTooltip().setContent(el("span", null, displayName(v)));
+      }
+    }
+    for (const [k, m] of markers) if (!keep.has(k)) { map.removeLayer(m); markers.delete(k); }
+    if (!fitted && keep.size) {
+      const pts = list.filter(v => v.lat != null).map(v => [v.lat, v.lon]);
+      pts.push([REF.lat, REF.lon]);
+      map.fitBounds(pts, { padding: [30, 30], maxZoom: 15 });
+      fitted = true;
+    }
+  }
+
+  // ---------- list + detail ----------
+  function visible() {
+    const cut = serverNow - maxAgeH * 3600;
+    return vessels.filter(v => v.last_seen >= cut && (!movingOnly || moving(v)));
+  }
+
+  function drawList(list) {
+    const tb = document.getElementById("list");
+    tb.replaceChildren();
+    const sorted = [...list].sort((a, b) => {
+      const da = a.lat != null ? nm(REF.lat, REF.lon, a.lat, a.lon) : 1e9, db = b.lat != null ? nm(REF.lat, REF.lon, b.lat, b.lon) : 1e9;
+      return da - db;
+    });
+    document.getElementById("listTitle").textContent = `VESSELS · ${list.length}` + (list.filter(moving).length ? ` (${list.filter(moving).length} moving)` : "");
+    if (!sorted.length) { const tr = tb.insertRow(); const td = tr.insertCell(); td.colSpan = 4; td.className = "empty"; td.textContent = "No vessels in this time range."; return; }
+    for (const v of sorted) {
+      const tr = tb.insertRow(); tr.className = "row" + (v.mmsi === selected ? " sel" : "");
+      tr.onclick = () => select(v.mmsi, true);
+      const a = tr.insertCell();
+      const sw = el("i", "sw"); sw.style.background = COLOR[category(v)]; sw.style.marginRight = "6px";
+      a.append(sw, el("span", "nm", displayName(v)));
+      a.append(el("div", "sub", typeName(v)));
+      const d = tr.insertCell(); d.className = "num";
+      d.textContent = v.lat != null ? nm(REF.lat, REF.lon, v.lat, v.lon).toFixed(1) + " nm " + dir(v.lat, v.lon) : "—";
+      const s = tr.insertCell(); s.className = "num"; s.textContent = moving(v) ? v.sog.toFixed(1) + " kn" : "stopped";
+      const h = tr.insertCell(); h.className = "num"; h.textContent = ago(v.last_seen);
+    }
+  }
+
+  async function select(mmsi, pan) {
+    selected = mmsi;
+    render();
+    const v = vessels.find(x => x.mmsi === mmsi);
+    if (v && v.lat != null && pan) map.setView([v.lat, v.lon], Math.max(map.getZoom(), 15));
+    let full = v;
+    try { full = await (await fetch("/radio/ais/vessel/" + mmsi)).json(); } catch (e) {}
+    if (selected !== mmsi) return;
+    if (trackLine) { map.removeLayer(trackLine); trackLine = null; }
+    if (full && full.track && full.track.length > 1) {
+      trackLine = L.polyline(full.track.map(p => [p[1], p[2]]), { color: "#ffffff", weight: 2, opacity: 0.6, dashArray: null }).addTo(map);
+    }
+    drawDetail(full || v);
+    document.getElementById("detail").scrollIntoView({ block: "nearest", behavior: "smooth" });
+  }
+
+  function drawDetail(v) {
+    const box = document.getElementById("detail");
+    box.replaceChildren(); box.hidden = !v;
+    if (!v) return;
+    const head = el("div", "d-head");
+    const left = el("div");
+    left.append(el("div", "d-name", displayName(v)), el("div", "d-type", typeName(v) + (v.kind === "A" || v.kind === "B" ? " · Class " + v.kind : "")));
+    const x = el("button", "x", "✕"); x.onclick = () => { selected = null; if (trackLine) map.removeLayer(trackLine); trackLine = null; render(); };
+    head.append(left, x);
+    const grid = el("div", "d-grid");
+    const add = (k, val) => { if (val == null || val === "") return; const d = el("div"); d.append(el("small", null, k), document.createTextNode(val)); grid.appendChild(d); };
+    if (v.lat != null) add("FROM BRIDGE OF LIONS", nm(REF.lat, REF.lon, v.lat, v.lon).toFixed(2) + " nm " + dir(v.lat, v.lon));
+    add("SPEED", v.sog != null && v.sog < 102.3 ? v.sog.toFixed(1) + " kn" : null);
+    add("COURSE", moving(v) && v.cog != null && v.cog < 360 ? Math.round(v.cog) + "°" : null);
+    add("STATUS", STATUS[v.status]);
+    const len = (v.to_bow || 0) + (v.to_stern || 0), beam = (v.to_port || 0) + (v.to_starboard || 0);
+    add("SIZE", len ? `${len} × ${beam || "?"} m` : null);
+    add("DRAUGHT", v.draught ? v.draught + " m" : null);
+    add("DESTINATION", v.destination);
+    add("CALL SIGN", v.callsign);
+    add("MMSI", String(v.mmsi));
+    add("LAST HEARD", ago(v.last_seen));
+    add("POSITION AGE", v.pos_ts ? ago(v.pos_ts) : null);
+    add("SIGNAL", v.power != null ? v.power + " dBFS" : null);
+    const links = el("div", "d-links");
+    const a = el("a", null, "Look up on MarineTraffic ↗");
+    a.href = "https://www.marinetraffic.com/en/ais/details/ships/mmsi:" + encodeURIComponent(v.mmsi);
+    a.target = "_blank"; a.rel = "noopener";
+    links.appendChild(a);
+    if (v.track && v.track.length > 1) links.append(document.createTextNode(` · track: ${v.track.length} points over ${ago(v.track[0][0]).replace(" ago", "")}`));
+    box.append(head, grid, links);
+  }
+
+  // ---------- status + controls ----------
+  function drawStatus() {
+    const st = document.getElementById("status"), btn = document.getElementById("nowBtn");
+    st.replaceChildren(); st.className = "status";
+    if (!ais) return;
+    if (!ais.enabled) { st.textContent = "AIS timesharing is turned off."; btn.disabled = true; return; }
+    if (ais.active) {
+      st.className = "status live";
+      st.append(el("b", null, "● Listening for ships now"), document.createTextNode(` · ${fmt(ais.remaining_s)} left, then back to voice`));
+      btn.disabled = true;
+      return;
+    }
+    btn.disabled = false;
+    const last = ais.last_window;
+    if (last) st.append(document.createTextNode("Last update "), el("b", null, ago(last.end)), document.createTextNode(` (${last.vessels} heard)`));
+    else st.append(document.createTextNode("No AIS window yet since the service started"));
+    if (ais.next_in_s != null) st.append(document.createTextNode(` · next in ${fmt(ais.next_in_s)} when the radio is free`));
+    if (ais.error) st.append(document.createTextNode(" · error: " + ais.error));
+  }
+
+  async function updateNow() {
+    const headers = {}; const pin = savedPin(); if (pin) headers["X-Override-Pin"] = pin;
+    const res = await fetch("/radio/ais/now?client=" + encodeURIComponent(clientId), { method: "POST", headers }).catch(() => null);
+    if (!res) { msg("Network error."); return; }
+    const d = await res.json().catch(() => ({}));
+    if (!res.ok) { msg(d.detail || "Couldn't start an update."); return; }
+    msg("Listening for ships for 90 s - positions appear as they arrive.");
+    load();
+  }
+
+  function renderChips() {
+    const box = document.getElementById("ageChips"); box.replaceChildren();
+    for (const [h, lab] of [[1, "1 H"], [6, "6 H"], [24, "24 H"], [168, "7 D"]]) {
+      const b = el("button", "chip" + (h === maxAgeH ? " active" : ""), lab);
+      b.onclick = () => { maxAgeH = h; renderChips(); load(); };
+      box.appendChild(b);
+    }
+    document.getElementById("movingChip").classList.toggle("active", movingOnly);
+  }
+  function toggleMoving() { movingOnly = !movingOnly; renderChips(); render(); }
+
+  function render() { const list = visible(); drawMarkers(list); drawList(list); drawStatus(); }
+
+  async function load() {
+    try {
+      const d = await (await fetch(`/radio/ais/vessels?max_age_h=${Math.max(maxAgeH, 24)}&client=${encodeURIComponent(clientId)}&x=${Date.now()}`)).json();
+      vessels = d.vessels; ais = d.ais; serverNow = d.now;
+      render();
+    } catch (e) {}
+  }
+
+  renderChips();
+  load();
+  setInterval(() => load(), 10000);
+</script>
+</body>
+</html>

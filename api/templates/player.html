@@ -223,6 +223,7 @@
     <h2>TOOLS</h2>
     <div class="tools">
       <a href="/radio/recordings/view">Recordings</a>
+      <a href="/radio/ais/view">Ship map</a>
       <a href="/radio/noise/view">Antenna noise meter</a>
     </div>
     <audio id="clipAudio" preload="none"></audio>
@@ -493,7 +494,11 @@
   function render(d) {
     const sel = selection;
     // pill + readout + cards
-    if (sel.mode === "scan") {
+    if (sel.mode === "scan" && ctl && ctl.ais_active) {
+      setPill("AIS " + fmt(ctl.ais_remaining_s), "scan"); setReadout(null); markCards(null);
+      defaultStatus("Briefly listening for ship positions (Ship map) - scanning resumes in " + fmt(ctl.ais_remaining_s) + ". Tap anything to take the radio back now.");
+      scanResumeBtn.disabled = true;
+    } else if (sel.mode === "scan") {
       const key = d.current_channel;
       if (d.locked) {
         setPill("LOCKED", "locked"); setReadout(key, "locked"); markCards(key, "locked");

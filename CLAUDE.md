@@ -356,8 +356,28 @@ metric = (8–16 kHz energy) − (0.3–3 kHz energy):
   field), ~1.5 nm N (Camachee Cove area), 0.4–0.8 nm. Signals strong (−0 to
   −23 dBFS) ⇒ range limited by what's out there, not the receiver. No base
   stations, AtoN or commercial traffic seen. Dongle ppm ≈ −2.6.
-- Not yet decided: display/timeshare design (see chat 2026-10-04 suggestions:
-  bridge-approach watch, who's-talking per recording, map, watch-list alerts).
+- **Timeshared AIS (built 2026-10-04):** `navaos_audio/ais.py` (AISService runs
+  AIS-catcher per window; VesselDB in `~/navaos-data/ais/vessels.json`: names/
+  static kept 30 days, 24 h thinned tracks; seeded from the first survey).
+  Scheduling lives in `control.py`: every `AIS_INTERVAL_S` (600) a
+  `AIS_WINDOW_S` (90) window, only when selection is scan (unlocked) or idle,
+  nobody listening, nothing queued. The scan is *paused*, selection stays
+  "scan"; any control request, new listener or scan-audio request
+  (`wake_for_listener`) ends the window and resumes the scan at once.
+  Env: `NAVAOS_AIS=0` disables (tests MUST set it, like NAVAOS_DEFAULT_SCAN=0),
+  `NAVAOS_AIS_INTERVAL_S`, `NAVAOS_AIS_WINDOW_S`. Cost: ~15% of scan time
+  while nobody listens; no recording during windows.
+- Routes: `GET /ais/vessels?max_age_h=` (latest state + timeshare status),
+  `GET /ais/vessel/{mmsi}` (with track), `POST /ais/now` (settings-permission;
+  refused while someone listens), `GET /ais/view` (Ship map page,
+  `api/templates/ais.html`: Leaflet from cdnjs, CARTO dark + OpenSeaMap
+  seamarks, arrows = moving / dots = stopped, colour by type with legend,
+  labels at zoom ≥15, tap → details + track + MarineTraffic link, list sorted
+  by distance from the Bridge of Lions). Player shows an "AIS m:ss" pill and
+  links the Ship map. Category colours not machine-validated for CVD (the
+  validator wasn't available) — shape/legend/labels/list carry the same info.
+- Ideas not built yet: bridge-approach watch, who's-talking per recording,
+  watch-list / SART-MOB alerts.
 
 ## Open issues / backlog
 

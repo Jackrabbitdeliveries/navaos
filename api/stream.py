@@ -10,6 +10,7 @@ from pydantic import BaseModel
 from navaos_audio.channel_manager import channel_manager, SessionConflictError
 from navaos_audio.control import ControlError, control
 from navaos_audio import noise_meter as nm
+from navaos_audio.ais import ais_service
 from navaos_audio.recorder import last_heard, list_recordings, mark_listened, resolve_recording
 
 _TEMPLATES = Path(__file__).parent / "templates"
@@ -138,6 +139,7 @@ def start_scan(client: str | None = None):
 @router.get("/scan/stream.mp3")
 def scan_stream(client: str | None = None):
     """Subscribe to the scanner's audio output. Call /radio/scan/start first."""
+    control.wake_for_listener()   # an AIS window pauses the scan; listening ends it
     if channel_manager.status().get("mode") != "scan":
         raise HTTPException(409, "Scan is not currently running. POST /radio/scan/start first.")
 
@@ -309,6 +311,44 @@ def set_noise_reference(req: NoiseReference, client: str | None = None,
 @router.get("/noise/view")
 def noise_page():
     return HTMLResponse(_render("noise.html"))
+
+
+# ---- AIS --------------------------------------------------------------
+
+@router.get("/ais/vessels")
+def ais_vessels(max_age_h: float = 24, client: str | None = None):
+    """Vessels heard in the last `max_age_h` hours (latest state, no tracks),
+    plus the timeshare status."""
+    control.heartbeat(client)
+    return {
+        "now": time.time(),
+        "ais": control.ais_status(),
+        "vessels": ais_service.db.snapshot(max(0.1, min(max_age_h, 24 * 30)) * 3600),
+    }
+
+
+@router.get("/ais/vessel/{mmsi}")
+def ais_vessel(mmsi: int):
+    v = ais_service.db.get(str(mmsi))
+    if v is None:
+        raise HTTPException(404, "Unknown vessel")
+    return v
+
+
+@router.post("/ais/now")
+def ais_now(client: str | None = None, x_override_pin: str | None = Header(default=None)):
+    """Start an AIS window now (if nobody is listening and the radio is just
+    scanning/idle)."""
+    try:
+        control.ais_now(client, x_override_pin)
+    except ControlError as e:
+        raise HTTPException(e.status, str(e))
+    return control.ais_status()
+
+
+@router.get("/ais/view")
+def ais_page():
+    return HTMLResponse(_render("ais.html"))
 
 
 # ---- recordings -------------------------------------------------------

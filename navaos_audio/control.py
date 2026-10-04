@@ -44,10 +44,17 @@ from typing import Optional
 
 from .channel_manager import DEFAULT_SCAN_ORDER, SessionConflictError, channel_manager
 from .noise_meter import noise_meter as _noise_meter
+from .ais import ais_service as _ais_service
 
 LEASE_S = 600
 ACTIVE_S = 15
 PIN_FILE = Path(os.environ.get("NAVAOS_PIN_FILE", Path.home() / "navaos-data" / "override_pin"))
+# AIS timeshare: a window of AIS_WINDOW_S every AIS_INTERVAL_S, only while the
+# radio is just scanning (unlocked) or idle, nobody is listening and nothing is
+# queued. Any control request or new listener ends a window at once.
+AIS_INTERVAL_S = int(os.environ.get("NAVAOS_AIS_INTERVAL_S", "600"))
+AIS_WINDOW_S = int(os.environ.get("NAVAOS_AIS_WINDOW_S", "90"))
+AIS_ENABLED = os.environ.get("NAVAOS_AIS", "1") != "0"
 IDLE_RETURN_S = 1200
 STARTUP_DEFAULT_S = 30
 # Tests and spare dev instances MUST set NAVAOS_DEFAULT_SCAN=0, or importing
@@ -79,9 +86,13 @@ def _configured_pin() -> Optional[str]:
 
 
 class ControlManager:
-    def __init__(self, cm=channel_manager, meter=_noise_meter):
+    def __init__(self, cm=channel_manager, meter=_noise_meter, ais=_ais_service):
         self._cm = cm
         self._meter = meter
+        self._ais = ais
+        self._ais_active = False
+        self._ais_until = 0.0
+        self._ais_next = time.monotonic() + 120   # first window ~2 min after start
         self._lock = threading.RLock()
         self._selection: dict = {"mode": "idle", "channel": None}
         self._holder: Optional[str] = None
@@ -106,6 +117,7 @@ class ControlManager:
     def stream_opened(self, client: Optional[str]) -> None:
         if client:
             with self._lock:
+                self._end_ais("listener")
                 self._streams[client] += 1
                 self._seen[client] = self._last_activity = time.monotonic()
 
@@ -157,6 +169,8 @@ class ControlManager:
             self._cm.get_config(channel)  # KeyError -> 404 upstream
         with self._lock:
             self.heartbeat(client)
+            if action != "cancel":
+                self._end_ais("request")
             self._reconcile()
             self._last_activity = time.monotonic()
 
@@ -249,7 +263,87 @@ class ControlManager:
         elif action == "resume":
             cm.resume_scan()
 
+    # ---- AIS timeshare --------------------------------------------------------
+
+    def _end_ais(self, why: str) -> None:
+        """Stop an AIS window (if any) and put the scan back if the radio was
+        scanning. Selection never changes for AIS - it's a pause."""
+        if not self._ais_active:
+            return
+        self._ais.stop()
+        self._ais_active = False
+        self._ais_next = time.monotonic() + AIS_INTERVAL_S
+        if self._selection["mode"] == "scan":
+            try:
+                self._cm.unsubscribe_scan(self._cm.start_scan())
+            except (ValueError, SessionConflictError) as e:
+                print(f"AIS-RESUME-SCAN-FAILED {e}", flush=True)
+        print(f"AIS-WINDOW-END ({why})", flush=True)
+
+    def _ais_eligible(self) -> bool:
+        if self._selection["mode"] not in ("scan", "idle") or self._pending is not None:
+            return False
+        if any(n > 0 for n in self._streams.values()):
+            return False
+        return not self._cm.status().get("locked")   # a conversation is going on
+
+    def _start_ais(self, now: float) -> bool:
+        if self._selection["mode"] == "scan":
+            self._cm.stop_scan()
+        if not self._ais.start():
+            print(f"AIS-START-FAILED {self._ais.error}", flush=True)
+            self._ais_next = now + AIS_INTERVAL_S
+            if self._selection["mode"] == "scan":
+                self._cm.unsubscribe_scan(self._cm.start_scan())
+            return False
+        self._ais_active = True
+        self._ais_until = now + AIS_WINDOW_S
+        return True
+
+    def _maybe_ais(self, now: float) -> None:
+        if self._ais_active:
+            if now >= self._ais_until or not self._ais.running or not self._ais_eligible():
+                self._end_ais("done" if now >= self._ais_until else "interrupted")
+            return
+        if AIS_ENABLED and now >= self._ais_next and self._ais_eligible():
+            self._start_ais(now)
+
+    def ais_now(self, client: Optional[str], pin: Optional[str]) -> None:
+        """'Update now' from the map page: same permission as settings, and
+        never cuts off someone who's listening."""
+        self.check_settings(client, pin)
+        with self._lock:
+            if self._ais_active:
+                return
+            if any(n > 0 for n in self._streams.values()):
+                raise ControlError("Someone is listening to the radio - AIS will update when it's free.", 409)
+            if not self._ais_eligible():
+                raise ControlError("The radio is busy (tuned, noise meter, or a conversation) - try again later.", 409)
+            if not self._start_ais(time.monotonic()):
+                raise ControlError(self._ais.error or "AIS couldn't start.", 500)
+
+    def wake_for_listener(self) -> None:
+        """Someone wants scan audio: end an AIS window so the scan is back."""
+        with self._lock:
+            self._end_ais("listener")
+
+    def ais_status(self) -> dict:
+        with self._lock:
+            now = time.monotonic()
+            return {
+                "enabled": AIS_ENABLED,
+                "active": self._ais_active,
+                "remaining_s": max(0, int(self._ais_until - now)) if self._ais_active else 0,
+                "next_in_s": None if self._ais_active or not AIS_ENABLED else max(0, int(self._ais_next - now)),
+                "interval_s": AIS_INTERVAL_S,
+                "window_s": AIS_WINDOW_S,
+                "last_window": self._ais.last_window,
+                "error": self._ais.error,
+            }
+
     def _reconcile(self) -> None:
+        if self._ais_active:
+            return   # the scan is deliberately paused for AIS
         # A scan that died on its own (device error) leaves the selection stale.
         if self._selection["mode"] == "scan" and self._cm.status().get("mode") != "scan":
             self._selection = {"mode": "idle", "channel": None}
@@ -284,7 +378,9 @@ class ControlManager:
                         print(f"CONTROL-QUEUED-FAILED {p['action']}: {e}", flush=True)
             elif self._holder is not None and not self._active(self._holder):
                 self._holder = None  # holder left: radio is open
-            self._maybe_default_scan(now)
+            self._maybe_ais(now)
+            if not self._ais_active:
+                self._maybe_default_scan(now)
 
     def _maybe_default_scan(self, now: float) -> None:
         if not DEFAULT_SCAN_ENABLED:
@@ -336,6 +432,8 @@ class ControlManager:
                     "last_change_by_you": bool(self._last_change and self._last_change["by"] == client),
                     "last_change_default": bool(self._last_change and self._last_change["by"] is None),
                     "listeners": sum(1 for c in self._streams if self._streams[c] > 0),
+                    "ais_active": self._ais_active,
+                    "ais_remaining_s": max(0, int(self._ais_until - now)) if self._ais_active else 0,
                     "default_scan_in_s": (
                         None if not DEFAULT_SCAN_ENABLED or self._selection["mode"] == "scan"
                         or any(n > 0 for n in self._streams.values())
