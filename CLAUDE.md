@@ -379,6 +379,24 @@ metric = (8–16 kHz energy) − (0.3–3 kHz energy):
 - Ideas not built yet: bridge-approach watch, who's-talking per recording,
   watch-list / SART-MOB alerts.
 
+### Speech-to-text test (2026-10-04) — not built into the app yet
+- Kevin asked for vessel names on recording tiles. VHF voice carries **no
+  transmitter ID** (only DSC calls on ch70 carry an MMSI), so the only route is
+  transcribing what's said and matching names against the AIS DB.
+- **whisper.cpp v1.9.4** built in `~/src/whisper.cpp` (`build/bin/whisper-cli`),
+  models `models/ggml-base.en.bin` and `ggml-small.en.bin`. Recipe: ffmpeg the
+  clip to 16 kHz mono wav, `whisper-cli -m MODEL -f clip.wav -t 4 -nt -np -l en`.
+- 18 longest clips (6 channels, 328 s audio): **base.en 134 s (2.4× faster than
+  real time), small.en 479 s (slower than real time) and once dropped most of
+  a 32 s clip** → use base.en. Transcripts very readable; typical errors are
+  misheard words ("armor master" = harbormaster).
+- `tools/stt_names.py` fuzzy-matches transcripts to AIS names: **0 matches** —
+  callers rarely say their own boat name, and named boats (e.g. "Sea Angel")
+  weren't in the AIS DB.
+- Proposed, awaiting Kevin's decision: transcribe every clip in the background
+  (+ one-time backfill of ~475 clips), show transcript + search on the
+  recordings page, ⚓ vessel tag only when a name matches.
+
 ## Open issues / backlog
 
 (No GitHub issues exist yet — the deploy key can't use the issues API. Track
