@@ -31,6 +31,12 @@ scan) from a phone/browser anywhere.
   and SSH came back over WiFi). Tailscale is also installed (`tailscale0`).
 - **Run Claude Code inside tmux** (`tmux new -A -s claude`): sessions started
   directly in an SSH shell die whenever the SSH connection drops. Antenna/cable: **same whip + cable as on the boat**, indoors in front of a window.
+- **Geography (2026-10-25):** the Pi + SDR (the "kit") is at Kevin's home,
+  **about ½ mile up the river from Nava's dock.** Nava is at that dock. Kevin
+  often uses the app from the dock or around town, so **phone location ≠ kit
+  location**: Boat ID's reveal must always use the phone's GPS as the viewpoint
+  (it does), and the kit only needs to *hear* the boats (it does — Nava itself
+  is heard hundreds of times a day; the first survey reached ~3 nm).
 - On the boat it was on Verizon LTE (IPv4 flaky in July) with a new outdoor
   VHF antenna ~6 ft above deck (late Sep 2026).
 - RF numbers below were measured **on the boat**; they don't transfer to the
