@@ -184,6 +184,39 @@ Legacy path (`ChannelConfig.receiver="rtl_fm"`): rtl_fm → AdaptiveSquelch
   - `channel_manager.py` — **the single hardware arbiter**: only one session
     (direct tune OR scan) may own the dongle; conflicts → HTTP 409.
     `DEFAULT_SCAN_ORDER = ["09", "13", "16", "68", "69", "71", "72"]`.
+- **Boat ID (piece 1 built 2026-10-25, see `docs/boat-id-plan.md`):**
+  `navaos_boatid/` package (kept apart from `navaos_audio/`) + `api/boatid.py`
+  router mounted at **`/boats`** (not `/radio`).
+  - `store.py` — SQLite `~/navaos-data/boatid/boatid.db` (table `sightings`, JSON
+    columns sensors/guess/ai/ai_meta/confirm/ais; `kit_id` from
+    `~/navaos-data/kit.json`, default "nava-pi"; `source` phone|upload) and
+    photos `~/navaos-data/boatid/photos/YYYY-MM/<id>.jpg`. Ids = 12-char random
+    tokens (unguessable). Env `NAVAOS_BOATID_DIR` for tests.
+  - `identify.py` — background thread per sighting → `claude-opus-5` via
+    `client.beta.messages.create` with `betas=["server-side-fallback-2026-07-01"]`,
+    `fallbacks="default"`, effort medium, structured output (JSON schema:
+    is_sailboat, hull, rig, size_class, length_ft_estimate, hull_color,
+    visible_name, features, description, up to 5 candidates {make, model,
+    confidence, why}, notes). The user's guess is hidden from the model. Handles
+    refusal + auth/rate/connection errors into `ai_error`.
+  - Routes: `GET /boats/snap` (page `api/templates/boats_snap.html`),
+    `POST /boats/sightings` (JSON: JPEG data URL made by the page's canvas,
+    ≤1568 px, no EXIF; ≤3 MB; guess fields validated), `GET /boats/sightings[/{id}]`
+    (no client id/path exposed), `GET /boats/photo/{id}.jpg`.
+  - Page: start (camera + location + iOS motion permission from a tap) → live
+    camera with GPS ±m / heading HUD → capture → tap the boat → guess chips
+    (hull/rig/size + optional model) → poll result → you-vs-AI table, name on
+    hull, description, features, candidates, captured sensors. Upload fallback
+    (no sensors). Heading = back-camera direction from W3C absolute orientation
+    (Android) or webkitCompassHeading→alpha (iOS, experimental); raw values are
+    stored for later calibration. Magnetic, not yet corrected for variation.
+  - **First real test (CC0 Commons photo of a Catalina 30, stern view):** 18 s,
+    3,747 in / 953 out tokens ≈ $0.04; hull/rig/size right, top candidate
+    "Catalina 30/320" (low confidence), read "Second Wind V" off the transom.
+  - Not built yet: piece 2 comparison screen/confirm, piece 3 AIS reveal
+    (snap-triggered AIS burst; `visible_name` ↔ AIS names), piece 4 scoring log.
+  - `.gitignore` now ignores *.jpg/*.jpeg/*.png/*.heic/*.webp everywhere
+    (safety net — the repo is public).
 - `docs/HANDOFF.md` — original July design brief. Useful background, but
   **partly stale** (integration steps are done; IPv4 and scan-lock notes are
   outdated). This file supersedes it.
@@ -436,7 +469,7 @@ metric = (8–16 kHz energy) − (0.3–3 kHz energy):
 (No GitHub issues exist yet — the deploy key can't use the issues API. Track
 here until issues are set up.)
 
-- **Boat ID ("guess, then reveal") — APPROVED 2026-10-25, build Phase 1 next
+- **Boat ID ("guess, then reveal") — piece 1 of 4 BUILT 2026-10-25; pieces 2–4 next
   (option B, sailboats only, Opus 5, single dongle, no lock-down; see the
   "Decisions so far" section of the plan). Plan:**
   `docs/boat-id-plan.md` (2026-10-25). No code written. Key finding: with

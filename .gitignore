@@ -8,3 +8,11 @@ venv/
 
 # Header photo: third-party image, kept on the Pi only (repo is public)
 static/hero.jpg
+
+# Safety net: photos (Boat ID, header photos) must never reach the public repo.
+# Boat ID data lives in ~/navaos-data/boatid/, outside the repo, anyway.
+*.jpg
+*.jpeg
+*.png
+*.heic
+*.webp

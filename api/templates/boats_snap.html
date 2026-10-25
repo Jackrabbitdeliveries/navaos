@@ -1,0 +1,420 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#07111f">
+  <title>Nava · Boat ID</title>
+  <style>
+    /* Same palette as player.html - keep in sync. */
+    :root {
+      color-scheme: dark;
+      --bg: #07111f; --panel: #0f1f36; --panel-2: #132845; --line: #1f3b60;
+      --text: #e6eef8; --muted: #8aa0b8; --cyan: #4fd1ff; --amber: #ffb547; --green: #4ade80; --red: #ff6b6b;
+      --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: var(--bg); color: var(--text);
+           font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif; -webkit-tap-highlight-color: transparent; }
+    .wrap { max-width: 640px; margin: 0 auto; padding: 0 14px 40px; }
+    .top { display: flex; justify-content: space-between; align-items: flex-end; gap: 10px; padding: 16px 2px 10px; }
+    .title { font-size: 22px; font-weight: 800; letter-spacing: 0.04em; }
+    .title .place { display: block; font-size: 11px; font-weight: 700; letter-spacing: 0.2em; color: var(--cyan); margin-bottom: 4px; }
+    .title small { display: block; font-style: italic; font-size: 13px; font-weight: 500; color: #b9c8da; margin-top: 3px; }
+    .back { color: var(--cyan); text-decoration: none; font-size: 14px; font-weight: 600; padding: 6px 10px; border: 1px solid var(--line); border-radius: 999px; }
+
+    .card { background: linear-gradient(160deg, var(--panel-2), var(--panel)); border: 1px solid var(--line); border-radius: 14px; padding: 14px; margin-top: 12px; }
+    .card[hidden], [hidden] { display: none !important; }
+    h2 { font-size: 12px; letter-spacing: 0.18em; color: var(--muted); font-weight: 700; margin: 0 0 10px; }
+    p.lead { margin: 0 0 12px; font-size: 15px; line-height: 1.45; color: #c9d6e6; }
+    .btn { font: inherit; font-size: 16px; font-weight: 700; color: var(--cyan); background: var(--panel); border: 1px solid var(--cyan);
+           border-radius: 12px; padding: 13px 16px; cursor: pointer; width: 100%; }
+    .btn.primary { background: var(--cyan); color: var(--bg); }
+    .btn:disabled { opacity: 0.4; }
+    .linkbtn { font: inherit; font-size: 14px; color: var(--cyan); background: none; border: none; padding: 8px 0; cursor: pointer; }
+    .row { display: flex; gap: 8px; margin-top: 10px; }
+
+    .viewer { position: relative; border-radius: 14px; overflow: hidden; border: 1px solid var(--line); background: #000; margin-top: 12px; }
+    .viewer video, .viewer img { display: block; width: 100%; height: auto; }
+    .hud { position: absolute; left: 8px; right: 8px; top: 8px; display: flex; justify-content: space-between; gap: 6px; pointer-events: none; }
+    .hud span { font-family: var(--mono); font-size: 12px; background: rgba(7,17,31,0.75); padding: 3px 7px; border-radius: 6px; }
+    .hud .ok { color: var(--green); } .hud .meh { color: var(--amber); } .hud .bad { color: var(--red); }
+    .shutter { position: absolute; left: 50%; bottom: 14px; transform: translateX(-50%); width: 68px; height: 68px; border-radius: 50%;
+               border: 4px solid #fff; background: rgba(255,255,255,0.25); cursor: pointer; }
+    .marker { position: absolute; width: 34px; height: 34px; margin: -17px 0 0 -17px; border: 3px solid var(--amber); border-radius: 50%;
+              box-shadow: 0 0 0 2px rgba(0,0,0,0.6); pointer-events: none; }
+    .tap-hint { position: absolute; left: 0; right: 0; bottom: 10px; text-align: center; pointer-events: none; }
+    .tap-hint span { background: rgba(7,17,31,0.8); padding: 5px 10px; border-radius: 999px; font-size: 13px; }
+
+    .q { margin-top: 12px; }
+    .q label { display: block; font-size: 12px; letter-spacing: 0.12em; color: var(--muted); font-weight: 700; margin-bottom: 6px; }
+    .chips { display: flex; flex-wrap: wrap; gap: 6px; }
+    .chip { font: inherit; font-size: 14px; font-weight: 600; color: var(--text); background: var(--panel); border: 1px solid var(--line);
+            border-radius: 999px; padding: 8px 12px; cursor: pointer; }
+    .chip.on { background: var(--cyan); color: var(--bg); border-color: var(--cyan); }
+    input[type=text] { width: 100%; font: inherit; font-size: 15px; color: var(--text); background: var(--panel); border: 1px solid var(--line);
+                       border-radius: 10px; padding: 10px 12px; outline: none; }
+    input[type=text]:focus { border-color: var(--cyan); }
+
+    .thinking { text-align: center; padding: 22px 0; color: #c9d6e6; }
+    .spin { width: 38px; height: 38px; border-radius: 50%; border: 3px solid var(--line); border-top-color: var(--cyan); margin: 0 auto 12px; animation: spin 1s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    table.cmp { width: 100%; border-collapse: collapse; font-size: 14px; }
+    table.cmp th { text-align: left; font-size: 11px; letter-spacing: 0.1em; color: var(--muted); font-weight: 700; padding: 6px 4px; border-bottom: 1px solid var(--line); }
+    table.cmp td { padding: 9px 4px; border-bottom: 1px solid #183152; vertical-align: top; }
+    table.cmp td.f { color: var(--muted); font-size: 12px; letter-spacing: 0.08em; }
+    .m { font-weight: 800; margin-left: 4px; }
+    .m.yes { color: var(--green); } .m.no { color: var(--red); } .m.na { color: var(--muted); }
+    .score { font-size: 30px; font-weight: 800; margin: 4px 0 2px; }
+    .desc { font-size: 14px; line-height: 1.45; color: #c9d6e6; margin: 10px 0 0; }
+    .feat { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+    .feat span { font-size: 12px; border: 1px solid var(--line); border-radius: 999px; padding: 3px 9px; color: #c9d6e6; }
+    .cand { padding: 10px 0; border-top: 1px solid #183152; }
+    .cand:first-of-type { border-top: none; }
+    .cand b { font-size: 15px; }
+    .conf { font-size: 11px; font-weight: 800; letter-spacing: 0.08em; padding: 2px 7px; border-radius: 999px; margin-left: 6px; border: 1px solid; }
+    .conf.high { color: var(--green); } .conf.medium { color: var(--cyan); } .conf.low { color: var(--muted); }
+    .why { font-size: 13px; color: #c9d6e6; margin-top: 3px; line-height: 1.4; }
+    .namecard { font-size: 15px; margin-top: 10px; }
+    .namecard b { color: var(--amber); }
+    .small { font-size: 12px; color: var(--muted); line-height: 1.5; }
+    .err { color: var(--red); font-size: 14px; margin-top: 8px; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="top">
+      <div class="title"><span class="place">ST. AUGUSTINE, FL</span>Boat ID<small>Sailboats · guess, then reveal</small></div>
+      <a class="back" href="/radio/player">← Player</a>
+    </div>
+
+    <!-- 1. start -->
+    <div id="stStart" class="card">
+      <h2>SNAP A SAILBOAT</h2>
+      <p class="lead">Point your camera at a sailboat, make a quick guess, then see what the AI thinks.
+        The page asks for <b>camera</b>, <b>location</b> and <b>motion/compass</b> access - location and
+        direction are what let it work out <i>which</i> boat you were pointing at.</p>
+      <button class="btn primary" onclick="startCamera()">Start camera</button>
+      <div class="row" style="justify-content:center"><label class="linkbtn">or upload a photo<input id="fileIn" type="file" accept="image/*" hidden></label></div>
+      <div id="startErr" class="err"></div>
+    </div>
+
+    <!-- 2. live camera -->
+    <div id="stLive" hidden>
+      <div class="viewer">
+        <video id="video" playsinline muted autoplay></video>
+        <div class="hud"><span id="hudGps">GPS …</span><span id="hudHead">heading …</span></div>
+        <button class="shutter" onclick="snap()" aria-label="Take photo"></button>
+      </div>
+      <div class="small" style="margin-top:6px">Hold the phone steady, pointing straight at the boat, and tap the white button.</div>
+    </div>
+
+    <!-- 3. captured: tap + guess -->
+    <div id="stGuess" hidden>
+      <div class="viewer" id="shotBox">
+        <img id="shot" alt="Your photo">
+        <div id="marker" class="marker" hidden></div>
+        <div class="tap-hint" id="tapHint"><span>Tap the boat you mean</span></div>
+      </div>
+      <div class="card">
+        <h2>YOUR GUESS</h2>
+        <div class="q"><label>HULL</label><div class="chips" id="gHull"></div></div>
+        <div class="q"><label>RIG</label><div class="chips" id="gRig"></div></div>
+        <div class="q"><label>SIZE</label><div class="chips" id="gSize"></div></div>
+        <div class="q"><label>MAKE / MODEL (OPTIONAL)</label><input type="text" id="gModel" placeholder="e.g. Catalina 30" maxlength="80" autocomplete="off"></div>
+        <div class="row"><button class="btn" onclick="retake()">Retake</button><button class="btn primary" id="goBtn" onclick="submit()">Reveal the AI's guess</button></div>
+        <div id="submitErr" class="err"></div>
+      </div>
+    </div>
+
+    <!-- 4. thinking / result -->
+    <div id="stResult" hidden>
+      <div class="viewer"><img id="resShot" alt="Your photo"><div id="resMarker" class="marker" hidden></div></div>
+      <div id="thinking" class="card thinking"><div class="spin"></div>Claude Opus 5 is looking at your boat…<div class="small" style="margin-top:6px">usually 5–20 seconds</div></div>
+      <div id="result" hidden></div>
+      <div class="row"><button class="btn primary" onclick="again()">Snap another</button></div>
+    </div>
+  </div>
+
+<script>
+  const HULLS = __HULLS__, RIGS = __RIGS__, SIZES = __SIZES__;
+  const LABEL = { monohull: "Monohull", catamaran: "Catamaran", trimaran: "Trimaran", sloop: "Sloop", cutter: "Cutter",
+    ketch_or_yawl: "Ketch / yawl", schooner: "Schooner", cat_rig: "Cat rig", under_30: "Under 30 ft", "30_39": "30–39 ft",
+    "40_49": "40–49 ft", "50_plus": "50+ ft", unknown: "Not sure" };
+  const clientId = (() => {
+    let id = null;
+    try { id = localStorage.getItem("navaos_client"); } catch (e) {}
+    if (!id) { id = (crypto.randomUUID ? crypto.randomUUID() : String(Math.random()).slice(2) + Date.now());
+               try { localStorage.setItem("navaos_client", id); } catch (e) {} }
+    return id;
+  })();
+  function $(id) { return document.getElementById(id); }
+  function el(tag, cls, text) { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; }
+  function show(id) { for (const s of ["stStart", "stLive", "stGuess", "stResult"]) $(s).hidden = s !== id; window.scrollTo(0, 0); }
+
+  // ---------- sensors ----------
+  // Raw values are kept with every sighting so the compass maths can be checked
+  // and improved later against real AIS matches (experiment E2 happens through use).
+  const S = { pos: null, orient: null, orientSrc: null, compass: null, compassAcc: null };
+
+  function cameraHeading(alpha, beta, gamma) {
+    // Direction the BACK camera points, from W3C absolute orientation (alpha counter-
+    // clockwise from north). Device -Z axis rotated into the earth frame (x=E, y=N).
+    const r = Math.PI / 180, a = alpha * r, b = beta * r, g = gamma * r;
+    const x = -Math.cos(a) * Math.sin(g) - Math.sin(a) * Math.sin(b) * Math.cos(g);
+    const y = -Math.sin(a) * Math.sin(g) + Math.cos(a) * Math.sin(b) * Math.cos(g);
+    if (Math.hypot(x, y) < 0.2) return null;   // phone lying flat: camera points at the ground
+    return (Math.atan2(x, y) / r + 360) % 360;
+  }
+
+  function currentHeading() {
+    const o = S.orient;
+    if (!o) return null;
+    if (S.compass != null) {
+      // iOS: webkitCompassHeading is magnetic heading of the device; convert to an
+      // absolute alpha and use the same camera-direction maths (experimental).
+      return cameraHeading((360 - S.compass) % 360, o.beta || 0, o.gamma || 0);
+    }
+    if (S.orientSrc === "absolute" && o.alpha != null) return cameraHeading(o.alpha, o.beta || 0, o.gamma || 0);
+    return null;
+  }
+
+  function onOrient(e, src) {
+    S.orient = { alpha: e.alpha, beta: e.beta, gamma: e.gamma, absolute: !!e.absolute };
+    S.orientSrc = src;
+    if (typeof e.webkitCompassHeading === "number") { S.compass = e.webkitCompassHeading; S.compassAcc = e.webkitCompassAccuracy; }
+  }
+
+  async function startSensors() {
+    try {
+      if (typeof DeviceOrientationEvent !== "undefined" && typeof DeviceOrientationEvent.requestPermission === "function") {
+        await DeviceOrientationEvent.requestPermission();   // iOS: must come from a tap
+      }
+    } catch (e) {}
+    if ("ondeviceorientationabsolute" in window) window.addEventListener("deviceorientationabsolute", e => onOrient(e, "absolute"));
+    else window.addEventListener("deviceorientation", e => onOrient(e, e.absolute ? "absolute" : "relative"));
+    if (navigator.geolocation) {
+      navigator.geolocation.watchPosition(p => {
+        S.pos = { lat: p.coords.latitude, lon: p.coords.longitude, accuracy: p.coords.accuracy, ts: p.timestamp };
+      }, () => {}, { enableHighAccuracy: true, maximumAge: 5000, timeout: 20000 });
+    }
+  }
+
+  function updateHud() {
+    const g = $("hudGps"), h = $("hudHead");
+    if (!S.pos) { g.textContent = "GPS waiting…"; g.className = "meh"; }
+    else { const a = Math.round(S.pos.accuracy); g.textContent = "GPS ±" + a + " m"; g.className = a <= 20 ? "ok" : a <= 100 ? "meh" : "bad"; }
+    const hd = currentHeading();
+    if (hd == null) { h.textContent = S.orient ? "hold phone upright" : "no compass"; h.className = "meh"; }
+    else { h.textContent = "heading " + Math.round(hd) + "°"; h.className = "ok"; }
+  }
+
+  // ---------- camera ----------
+  let stream = null, hudTimer = null;
+  async function startCamera() {
+    $("startErr").textContent = "";
+    await startSensors();
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({ audio: false,
+        video: { facingMode: { ideal: "environment" }, width: { ideal: 1920 }, height: { ideal: 1080 } } });
+    } catch (e) {
+      $("startErr").textContent = "Camera not available (" + (e.name || e) + "). You can upload a photo instead.";
+      return;
+    }
+    $("video").srcObject = stream;
+    show("stLive");
+    hudTimer = setInterval(updateHud, 500); updateHud();
+  }
+  function stopCamera() { if (stream) stream.getTracks().forEach(t => t.stop()); stream = null; clearInterval(hudTimer); }
+
+  // ---------- capture ----------
+  const MAX_SIDE = 1568;   // Claude's recommended image size; also strips all photo metadata
+  let shot = null;          // { dataUrl, w, h, source, taken_at, sensors }
+  let tap = null, guess = { hull: null, rig: null, size: null };
+
+  function toJpeg(source, sw, sh) {
+    const k = Math.min(1, MAX_SIDE / Math.max(sw, sh));
+    const c = document.createElement("canvas");
+    c.width = Math.round(sw * k); c.height = Math.round(sh * k);
+    c.getContext("2d").drawImage(source, 0, 0, c.width, c.height);
+    return { dataUrl: c.toDataURL("image/jpeg", 0.85), w: c.width, h: c.height };
+  }
+
+  function snap() {
+    const v = $("video");
+    if (!v.videoWidth) return;
+    const takenAt = Date.now() / 1000;
+    const sensors = {
+      lat: S.pos && S.pos.lat, lon: S.pos && S.pos.lon, accuracy_m: S.pos && S.pos.accuracy,
+      pos_age_s: S.pos ? Math.round(Date.now() / 1000 - S.pos.ts / 1000) : null,
+      heading_deg: currentHeading(), heading_src: S.compass != null ? "ios-compass" : S.orientSrc,
+      compass_accuracy_deg: S.compassAcc, orientation: S.orient, ios_compass: S.compass,
+      screen_angle: (screen.orientation && screen.orientation.angle) || window.orientation || 0,
+      user_agent: navigator.userAgent.slice(0, 160),
+    };
+    const j = toJpeg(v, v.videoWidth, v.videoHeight);
+    shot = { ...j, source: "phone", taken_at: takenAt, sensors };
+    stopCamera();
+    openGuess();
+  }
+
+  $("fileIn").addEventListener("change", ev => {
+    const f = ev.target.files && ev.target.files[0];
+    if (!f) return;
+    const img = new Image();
+    img.onload = () => {
+      const j = toJpeg(img, img.naturalWidth, img.naturalHeight);
+      shot = { ...j, source: "upload", taken_at: (f.lastModified || Date.now()) / 1000, sensors: null };
+      URL.revokeObjectURL(img.src);
+      openGuess();
+    };
+    img.onerror = () => { $("startErr").textContent = "Couldn't read that image."; };
+    img.src = URL.createObjectURL(f);
+  });
+
+  // ---------- tap + guess ----------
+  function chips(boxId, values, key) {
+    const box = $(boxId); box.replaceChildren();
+    for (const v of values) {
+      const b = el("button", "chip" + (guess[key] === v ? " on" : ""), LABEL[v] || v);
+      b.onclick = () => { guess[key] = v; chips(boxId, values, key); };
+      box.appendChild(b);
+    }
+  }
+  function openGuess() {
+    tap = null; guess = { hull: null, rig: null, size: null };
+    $("shot").src = shot.dataUrl; $("marker").hidden = true; $("tapHint").hidden = false;
+    $("gModel").value = ""; $("submitErr").textContent = "";
+    chips("gHull", HULLS, "hull"); chips("gRig", RIGS, "rig"); chips("gSize", SIZES, "size");
+    show("stGuess");
+  }
+  $("shotBox").addEventListener("click", ev => {
+    const r = $("shot").getBoundingClientRect();
+    tap = { x: Math.min(1, Math.max(0, (ev.clientX - r.left) / r.width)), y: Math.min(1, Math.max(0, (ev.clientY - r.top) / r.height)) };
+    const m = $("marker"); m.style.left = (tap.x * 100) + "%"; m.style.top = (tap.y * 100) + "%"; m.hidden = false;
+    $("tapHint").hidden = true;
+  });
+  function retake() { shot = null; show("stStart"); }
+
+  async function submit() {
+    const btn = $("goBtn"); btn.disabled = true; $("submitErr").textContent = "";
+    const body = { image: shot.dataUrl, source: shot.source, client: clientId, taken_at: shot.taken_at,
+      img_w: shot.w, img_h: shot.h, tap_x: tap && tap.x, tap_y: tap && tap.y, sensors: shot.sensors,
+      guess: { hull: guess.hull || "unknown", rig: guess.rig || "unknown", size: guess.size || "unknown", model: $("gModel").value.trim() } };
+    let res;
+    try { res = await fetch("/boats/sightings", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }); }
+    catch (e) { $("submitErr").textContent = "Upload failed - check your connection."; btn.disabled = false; return; }
+    const d = await res.json().catch(() => ({}));
+    btn.disabled = false;
+    if (!res.ok) { $("submitErr").textContent = d.detail || "Upload failed."; return; }
+    showResult(d.id);
+  }
+
+  // ---------- result ----------
+  let pollTimer = null;
+  function showResult(id) {
+    $("resShot").src = shot ? shot.dataUrl : "/boats/photo/" + id + ".jpg";
+    const m = $("resMarker");
+    if (tap) { m.style.left = (tap.x * 100) + "%"; m.style.top = (tap.y * 100) + "%"; m.hidden = false; } else m.hidden = true;
+    $("thinking").hidden = false; $("result").hidden = true; $("result").replaceChildren();
+    show("stResult");
+    try { history.replaceState(null, "", "#" + id); } catch (e) {}
+    clearInterval(pollTimer);
+    const t0 = Date.now();
+    pollTimer = setInterval(async () => {
+      let d;
+      try { d = await (await fetch("/boats/sightings/" + id + "?x=" + Date.now())).json(); } catch (e) { return; }
+      if (d.ai_status === "pending" && Date.now() - t0 < 150000) return;
+      clearInterval(pollTimer);
+      renderResult(d);
+    }, 2000);
+  }
+
+  function mark(user, ai) {
+    if (!user || user === "unknown") return ["na", "–"];
+    if (!ai || ai === "unknown") return ["na", "?"];
+    return user === ai ? ["yes", "✓"] : ["no", "✗"];
+  }
+
+  function renderResult(d) {
+    $("thinking").hidden = true;
+    if (d.tap_x != null && d.tap_y != null) {   // also restores the marker when reopened from a link
+      const m = $("resMarker"); m.style.left = (d.tap_x * 100) + "%"; m.style.top = (d.tap_y * 100) + "%"; m.hidden = false;
+    }
+    const box = $("result"); box.hidden = false; box.replaceChildren();
+    if (d.ai_status !== "done" || !d.ai) {
+      const c = el("div", "card"); c.append(el("h2", null, "NO ANSWER"), el("div", "err", d.ai_error || "The AI didn't answer in time - try again."));
+      box.appendChild(c); return;
+    }
+    const ai = d.ai, g = d.guess || {};
+    const card = el("div", "card");
+    if (!ai.is_sailboat) {
+      card.append(el("h2", null, "NOT A SAILBOAT?"), el("p", "desc", ai.description));
+      if (ai.notes) card.appendChild(el("p", "small", ai.notes));
+      box.appendChild(card); return;
+    }
+    // score: one point per field where you committed to an answer and matched
+    const fields = [["HULL", "hull", "hull"], ["RIG", "rig", "rig"], ["SIZE", "size", "size_class"]];
+    let pts = 0, tried = 0;
+    const tbl = el("table", "cmp");
+    const hr = tbl.insertRow(); for (const t of ["", "YOU", "AI"]) hr.appendChild(el("th", null, t));
+    for (const [lab, gk, ak] of fields) {
+      const [cls, sym] = mark(g[gk], ai[ak]);
+      if (cls !== "na") { tried++; if (cls === "yes") pts++; }
+      const tr = tbl.insertRow();
+      tr.appendChild(el("td", "f", lab));
+      const you = el("td", null, LABEL[g[gk]] || "Not sure"); you.appendChild(el("span", "m " + cls, sym)); tr.appendChild(you);
+      tr.appendChild(el("td", null, (LABEL[ai[ak]] || ai[ak]) + (ak === "size_class" && ai.length_ft_estimate ? " (~" + ai.length_ft_estimate + " ft)" : "")));
+    }
+    if (g.model) {
+      const tr = tbl.insertRow(); tr.appendChild(el("td", "f", "MODEL"));
+      tr.appendChild(el("td", null, g.model));
+      const top = (ai.candidates || [])[0];
+      tr.appendChild(el("td", null, top ? top.make + " " + top.model : "no guess"));
+    }
+    card.append(el("h2", null, "YOU VS THE AI"));
+    card.appendChild(el("div", "score", tried ? pts + " / " + tried : "–"));
+    card.appendChild(el("div", "small", tried ? "fields where you and the AI agree (the AI can be wrong too - the AIS reveal comes later)" : "make a guess next time to score"));
+    card.appendChild(tbl);
+    if (ai.visible_name) { const n = el("div", "namecard"); n.append("Name on the hull: "); n.appendChild(el("b", null, ai.visible_name)); card.appendChild(n); }
+    card.appendChild(el("p", "desc", ai.description));
+    if (ai.features && ai.features.length) { const f = el("div", "feat"); for (const t of ai.features) f.appendChild(el("span", null, t)); card.appendChild(f); }
+    box.appendChild(card);
+
+    const cc = el("div", "card");
+    cc.appendChild(el("h2", null, "AI MAKE / MODEL CANDIDATES"));
+    if (!ai.candidates || !ai.candidates.length) cc.appendChild(el("div", "small", "No confident make/model guess from this photo."));
+    for (const c of ai.candidates || []) {
+      const row = el("div", "cand");
+      const t = el("div"); t.appendChild(el("b", null, c.make + " " + c.model)); t.appendChild(el("span", "conf " + c.confidence, c.confidence.toUpperCase()));
+      row.append(t, el("div", "why", c.why));
+      cc.appendChild(row);
+    }
+    if (ai.notes) cc.appendChild(el("p", "small", "Note: " + ai.notes));
+    box.appendChild(cc);
+
+    const sc = el("div", "card");
+    sc.appendChild(el("h2", null, "CAPTURED WITH THE PHOTO"));
+    const s = d.sensors;
+    const lines = [];
+    if (!s) lines.push("Uploaded photo - no location or direction, so no AIS reveal for this one.");
+    else {
+      lines.push(s.lat != null ? `Position ±${Math.round(s.accuracy_m)} m` : "No position (location permission?)");
+      lines.push(s.heading_deg != null ? `Pointing ${Math.round(s.heading_deg)}° (magnetic, experimental)` : "No compass direction");
+    }
+    if (d.ai_meta) lines.push(`${d.ai_meta.model} · ${d.ai_meta.seconds} s · ${d.ai_meta.input_tokens + d.ai_meta.output_tokens} tokens`);
+    for (const l of lines) sc.appendChild(el("div", "small", l));
+    box.appendChild(sc);
+  }
+
+  function again() { clearInterval(pollTimer); shot = null; try { history.replaceState(null, "", location.pathname); } catch (e) {} show("stStart"); }
+
+  // Reopen a result from its link (#id)
+  (function () {
+    const id = location.hash.slice(1);
+    if (/^[A-Za-z0-9_-]{12}$/.test(id)) { tap = null; showResult(id); }
+  })();
+</script>
+</body>
+</html>
