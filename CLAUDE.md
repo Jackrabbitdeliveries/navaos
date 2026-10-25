@@ -213,6 +213,12 @@ Legacy path (`ChannelConfig.receiver="rtl_fm"`): rtl_fm → AdaptiveSquelch
   - **First real test (CC0 Commons photo of a Catalina 30, stern view):** 18 s,
     3,747 in / 953 out tokens ≈ $0.04; hull/rig/size right, top candidate
     "Catalina 30/320" (low confidence), read "Second Wind V" off the transom.
+  - `GET /boats/log` (`api/templates/boats_log.html`, 2026-10-25): "My boat IDs" —
+    every sighting newest first by day, thumbnail, hull name / top candidate,
+    your guess, score (same rule as the result screen), total agreement;
+    tap → `/boats/snap#<id>` reopens the result. Player's "Boat ID" tool links
+    here. iPhone note: a playing `<video>` hid the HUD overlay → HUD/shutter
+    z-indexed above it and readouts repeated below the camera.
   - Not built yet: piece 2 comparison screen/confirm, piece 3 AIS reveal
     (snap-triggered AIS burst; `visible_name` ↔ AIS names), piece 4 scoring log.
   - `.gitignore` now ignores *.jpg/*.jpeg/*.png/*.heic/*.webp everywhere

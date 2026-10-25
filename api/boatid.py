@@ -39,6 +39,11 @@ def snap_page():
     return _page("boats_snap.html")
 
 
+@router.get("/log")
+def log_page():
+    return _page("boats_log.html")
+
+
 class NewSighting(BaseModel):
     image: str                      # data:image/jpeg;base64,...
     source: str = "phone"           # phone | upload

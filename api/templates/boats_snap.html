@@ -92,7 +92,7 @@
   <div class="wrap">
     <div class="top">
       <div class="title"><span class="place">ST. AUGUSTINE, FL</span>Boat ID<small>Sailboats · guess, then reveal</small></div>
-      <a class="back" href="/radio/player">← Player</a>
+      <div style="display:flex;gap:6px"><a class="back" href="/boats/log">My boat IDs</a><a class="back" href="/radio/player">← Player</a></div>
     </div>
 
     <!-- 1. start -->
@@ -412,8 +412,8 @@
     const lines = [];
     if (!s) lines.push("Uploaded photo - no location or direction, so no AIS reveal for this one.");
     else {
-      lines.push(s.lat != null ? `Position ±${Math.round(s.accuracy_m)} m` : "No position (location permission?)");
-      lines.push(s.heading_deg != null ? `Pointing ${Math.round(s.heading_deg)}° (magnetic, experimental)` : "No compass direction");
+      lines.push(s.lat != null ? `GPS: ±${Math.round(s.accuracy_m)} m` : "GPS: none (location permission?)");
+      lines.push(s.heading_deg != null ? `Pointing: ${Math.round(s.heading_deg)}° ${compassPoint(s.heading_deg)} (magnetic, experimental)` : "Pointing: no compass reading");
     }
     if (d.ai_meta) lines.push(`${d.ai_meta.model} · ${d.ai_meta.seconds} s · ${d.ai_meta.input_tokens + d.ai_meta.output_tokens} tokens`);
     for (const l of lines) sc.appendChild(el("div", "small", l));

@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#07111f">
+  <title>Nava · My boat IDs</title>
+  <style>
+    /* Same palette as player.html - keep in sync. */
+    :root {
+      color-scheme: dark;
+      --bg: #07111f; --panel: #0f1f36; --panel-2: #132845; --line: #1f3b60;
+      --text: #e6eef8; --muted: #8aa0b8; --cyan: #4fd1ff; --amber: #ffb547; --green: #4ade80; --red: #ff6b6b;
+      --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: var(--bg); color: var(--text);
+           font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif; -webkit-tap-highlight-color: transparent; }
+    .wrap { max-width: 640px; margin: 0 auto; padding: 0 14px 40px; }
+    .top { display: flex; justify-content: space-between; align-items: flex-end; gap: 10px; padding: 16px 2px 10px; }
+    .title { font-size: 22px; font-weight: 800; letter-spacing: 0.04em; }
+    .title .place { display: block; font-size: 11px; font-weight: 700; letter-spacing: 0.2em; color: var(--cyan); margin-bottom: 4px; }
+    .title small { display: block; font-style: italic; font-size: 13px; font-weight: 500; color: #b9c8da; margin-top: 3px; }
+    .back { color: var(--cyan); text-decoration: none; font-size: 14px; font-weight: 600; padding: 6px 10px; border: 1px solid var(--line); border-radius: 999px; white-space: nowrap; }
+    .snapbtn { display: block; text-align: center; text-decoration: none; font-size: 16px; font-weight: 700; color: var(--bg); background: var(--cyan);
+               border-radius: 12px; padding: 13px 16px; margin: 6px 0 4px; }
+    .summary { font-size: 13px; color: var(--muted); margin: 10px 2px 4px; }
+    .day { font-size: 12px; letter-spacing: 0.18em; color: var(--muted); font-weight: 700; margin: 20px 2px 8px; }
+    a.item { display: flex; gap: 12px; align-items: center; text-decoration: none; color: inherit; background: var(--panel);
+             border: 1px solid var(--line); border-radius: 12px; padding: 8px; margin-bottom: 8px; }
+    .thumb { flex: none; width: 92px; height: 70px; border-radius: 8px; object-fit: cover; background: #000; }
+    .main { flex: 1; min-width: 0; }
+    .what { font-size: 15px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .what .name { color: var(--amber); }
+    .sub { font-size: 12px; color: var(--muted); margin-top: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .score { flex: none; text-align: right; font-family: var(--mono); font-size: 15px; font-weight: 800; }
+    .score small { display: block; font-size: 10px; font-weight: 600; color: var(--muted); letter-spacing: 0.08em; }
+    .score.full { color: var(--green); } .score.part { color: var(--cyan); } .score.none { color: var(--muted); }
+    .pending { color: var(--amber); } .err { color: var(--red); }
+    .empty { color: var(--muted); font-size: 14px; text-align: center; padding: 30px 0; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="top">
+      <div class="title"><span class="place">ST. AUGUSTINE, FL</span>My boat IDs<small>Sailboats · guess, then reveal</small></div>
+      <a class="back" href="/radio/player">← Player</a>
+    </div>
+    <a class="snapbtn" href="/boats/snap">📷 Snap a sailboat</a>
+    <div class="summary" id="summary"></div>
+    <div id="list"><div class="empty">Loading…</div></div>
+  </div>
+
+<script>
+  const LABEL = { monohull: "Monohull", catamaran: "Catamaran", trimaran: "Trimaran", sloop: "Sloop", cutter: "Cutter",
+    ketch_or_yawl: "Ketch / yawl", schooner: "Schooner", cat_rig: "Cat rig", under_30: "<30 ft", "30_39": "30–39 ft",
+    "40_49": "40–49 ft", "50_plus": "50+ ft", unknown: "?" };
+  function el(tag, cls, text) { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; }
+
+  // Same rule as the result screen: a point per field you committed to and matched.
+  function score(s) {
+    if (s.ai_status !== "done" || !s.ai || !s.ai.is_sailboat) return null;
+    const g = s.guess || {}; let pts = 0, tried = 0;
+    for (const [gk, ak] of [["hull", "hull"], ["rig", "rig"], ["size", "size_class"]]) {
+      if (!g[gk] || g[gk] === "unknown" || !s.ai[ak] || s.ai[ak] === "unknown") continue;
+      tried++; if (g[gk] === s.ai[ak]) pts++;
+    }
+    return { pts, tried };
+  }
+
+  function dayLabel(ts) {
+    const d = new Date(ts * 1000), today = new Date();
+    const diff = Math.round((new Date(today.toDateString()) - new Date(d.toDateString())) / 86400000);
+    if (diff === 0) return "TODAY";
+    if (diff === 1) return "YESTERDAY";
+    return d.toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" }).toUpperCase();
+  }
+
+  async function load() {
+    let list;
+    try { list = await (await fetch("/boats/sightings?limit=200&x=" + Date.now())).json(); } catch (e) { return; }
+    const box = document.getElementById("list"); box.replaceChildren();
+    if (!list.length) { box.appendChild(el("div", "empty", "No boat IDs yet - snap your first sailboat.")); return; }
+    let totPts = 0, totTried = 0, day = null;
+    for (const s of list) {
+      const sc = score(s);
+      if (sc) { totPts += sc.pts; totTried += sc.tried; }
+      const dl = dayLabel(s.created_at);
+      if (dl !== day) { day = dl; box.appendChild(el("div", "day", dl)); }
+      const a = el("a", "item"); a.href = "/boats/snap#" + s.id;
+      const img = el("img", "thumb"); img.loading = "lazy"; img.alt = ""; img.src = "/boats/photo/" + s.id + ".jpg";
+      const main = el("div", "main");
+      const what = el("div", "what");
+      const ai = s.ai || {};
+      if (s.ai_status === "pending") what.appendChild(el("span", "pending", "AI still thinking…"));
+      else if (s.ai_status !== "done") what.appendChild(el("span", "err", "No AI answer"));
+      else if (!ai.is_sailboat) what.textContent = "Not a sailboat";
+      else {
+        if (ai.visible_name) { what.appendChild(el("span", "name", ai.visible_name)); what.append(" · "); }
+        const top = (ai.candidates || [])[0];
+        what.append(top ? top.make + " " + top.model : [LABEL[ai.rig], LABEL[ai.hull]].filter(x => x && x !== "?").join(" "));
+      }
+      const t = new Date(s.created_at * 1000).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+      const g = s.guess || {};
+      const yours = [g.model, LABEL[g.rig] !== "?" ? LABEL[g.rig] : null, LABEL[g.size] !== "?" ? LABEL[g.size] : null].filter(Boolean).join(", ");
+      main.append(what, el("div", "sub", t + (yours ? " · you said: " + yours : "") + (s.source === "upload" ? " · uploaded" : "")));
+      const sco = el("div", "score " + (!sc || !sc.tried ? "none" : sc.pts === sc.tried ? "full" : "part"), sc && sc.tried ? sc.pts + "/" + sc.tried : "–");
+      sco.appendChild(el("small", null, "SCORE"));
+      a.append(img, main, sco);
+      box.appendChild(a);
+    }
+    document.getElementById("summary").textContent =
+      `${list.length} boat${list.length === 1 ? "" : "s"} identified` + (totTried ? ` · you agreed with the AI on ${totPts} of ${totTried} fields` : "");
+  }
+  load();
+</script>
+</body>
+</html>
