@@ -57,7 +57,14 @@ scan) from a phone/browser anywhere.
 
 Key installed deps (no requirements.txt yet): fastapi 0.139, uvicorn 0.49,
 numpy 2.5, pydantic 2.13, webrtcvad 2.0.10, setuptools 80.x (webrtcvad needs
-`pkg_resources`; setuptools ≥81 would break it). System: `rtl_fm`, `ffmpeg`.
+`pkg_resources`; setuptools ≥81 would break it), **anthropic 2.3.0** (added
+2026-10-25 for Boat ID). System: `rtl_fm`, `ffmpeg`.
+
+**Anthropic API key** (Boat ID, 2026-10-25): `~/navaos-data/anthropic_api_key`
+(mode 600, one line, stored by Kevin via a hidden `read -rs` prompt). Read it in
+code with `anthropic.Anthropic(api_key=<file contents>)`. **Never print, log or
+commit it.** Kevin chose model **`claude-opus-5`** (D3/D4 in
+`docs/boat-id-plan.md`). Verified working 2026-10-25 (req_011CgPbHdWYBQYDTdoBoxtpp).
 
 ## Architecture
 
