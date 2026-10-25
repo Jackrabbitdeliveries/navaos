@@ -9,6 +9,24 @@ Pi._
 > ("…how often an AIS match would be possible from the"). I've assumed it ended
 > "…from the existing AIS data", and did that experiment (section 3.1).
 
+## Decisions so far (Kevin, 2026-10-25)
+
+| # | Decision |
+|---|---|
+| **D2** | **Use the single existing dongle for now** (no second SDR yet): snap-triggered AIS (option A) + fixes before/after the photo (option B). Revisit after testing. |
+| **D3/D4** | **Hosted AI with Claude Opus 5** (`claude-opus-5`, $5 / $25 per million input/output tokens → roughly **$0.04–0.06 per photo**). Local model postponed. Note: Opus 5.5 (newer, $4 / $20) was the recommendation; pending Kevin's confirmation of which he meant. |
+| **D6** | **No lock-down yet** — Kevin is effectively the only user. Photos keep random, unguessable IDs and aren't listed anywhere public. Revisit before anyone else uses it. |
+| **Scope** | **Sailboats only** for the first version, to prove the idea. |
+
+Still open: D1 (name — defaulting to `/boats`), D5 (library bootstrap), D7, D8, D9 — the defaults below apply unless Kevin says otherwise.
+
+### What "sailboats only" means in practice
+- **Why it fits:** of the 219 vessels the AIS database knows, **53 are type "sailing"**, 49 named, 52 with length (median ~13 m / 42 ft). Most AIS traffic here is cruising sailboats on moorings, so the reveal has real data from day one.
+- **Your quick guess (tap chips):** hull — *monohull / catamaran / trimaran*; rig — *sloop / cutter / ketch or yawl / schooner / not sure*; size — *under 30 ft / 30–39 / 40–49 / 50+*; optional free-text make/model.
+- **What the AI is asked for:** the same fields, plus visible features (cockpit centre/aft, deck saloon, bowsprit, transom/sugar-scoop, hull colour, dodger/bimini, davits) and up to 5 make/model candidates with reasons.
+- **Scoring:** points per field (hull, rig, size, model), with an AIS-verified bonus when the size and "sailing" type check out against the identified boat.
+- **Non-sailboats:** "That's not a sailboat" is a valid answer and is stored, but not scored, in v1.
+
 **Decisions you need to make are marked like this:**
 > **DECISION D# — question.** *Recommended default:* …
 
