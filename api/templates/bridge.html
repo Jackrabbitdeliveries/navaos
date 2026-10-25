@@ -1,0 +1,311 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#07111f">
+  <title>Nava VHF · Bridge of Lions</title>
+  <style>
+    /* Same palette as player.html - keep in sync. */
+    :root {
+      color-scheme: dark;
+      --bg: #07111f; --panel: #0f1f36; --panel-2: #132845; --line: #1f3b60;
+      --text: #e6eef8; --muted: #8aa0b8; --cyan: #4fd1ff; --amber: #ffb547; --green: #4ade80;
+      --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: var(--bg); color: var(--text);
+           font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif; -webkit-tap-highlight-color: transparent; }
+    .wrap { max-width: 900px; margin: 0 auto; padding: 0 14px 40px; }
+    .top { display: flex; justify-content: space-between; align-items: flex-end; gap: 10px; padding: 16px 2px 10px; }
+    .title { font-size: 22px; font-weight: 800; letter-spacing: 0.04em; }
+    .title .place { display: block; font-size: 11px; font-weight: 700; letter-spacing: 0.2em; color: var(--cyan); margin-bottom: 4px; }
+    .title small.tagline { display: block; font-style: italic; letter-spacing: 0.03em; font-size: 13px; font-weight: 500; color: #b9c8da; margin-top: 3px; }
+    .back { color: var(--cyan); text-decoration: none; font-size: 14px; font-weight: 600; padding: 6px 10px;
+            border: 1px solid var(--line); border-radius: 999px; white-space: nowrap; }
+
+    .cam { position: relative; width: 100%; aspect-ratio: 16 / 9; border-radius: 14px; overflow: hidden;
+           border: 1px solid var(--line); background: #000; }
+    .cam iframe { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; }
+    .credit { display: flex; justify-content: space-between; gap: 8px; font-size: 12px; color: var(--muted); margin: 6px 2px 0; flex-wrap: wrap; }
+    .credit a, .linkbtn { color: var(--cyan); text-decoration: none; background: none; border: none; font: inherit; padding: 0; cursor: pointer; }
+
+    .grid { display: grid; grid-template-columns: 1fr; gap: 12px; margin-top: 12px; }
+    @media (min-width: 760px) { .grid { grid-template-columns: 1fr 1fr; } }
+    .card { background: linear-gradient(160deg, var(--panel-2), var(--panel)); border: 1px solid var(--line); border-radius: 14px; padding: 14px; }
+    h2 { font-size: 12px; letter-spacing: 0.18em; color: var(--muted); font-weight: 700; margin: 0 0 10px;
+         display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+    h2 a { color: var(--cyan); text-decoration: none; letter-spacing: 0.04em; font-size: 12px; }
+
+    .radio-row { display: flex; align-items: center; gap: 12px; }
+    .big-btn { flex: none; width: 56px; height: 56px; border-radius: 50%; border: 1px solid var(--cyan); background: transparent;
+               color: var(--cyan); font-size: 20px; cursor: pointer; }
+    .big-btn.on { background: var(--cyan); color: var(--bg); }
+    .radio-text b { display: block; font-size: 16px; }
+    .radio-text span { font-size: 13px; color: var(--muted); }
+    .radio-text span.warn { color: var(--amber); }
+    audio { display: none; }
+
+    .boat { display: flex; align-items: center; gap: 10px; padding: 8px 0; border-top: 1px solid #183152; }
+    .boat:first-of-type { border-top: none; }
+    .arrow { flex: none; width: 26px; text-align: center; font-size: 16px; color: var(--muted); }
+    .arrow.in { color: var(--green); } .arrow.out { color: var(--muted); }
+    .b-main { flex: 1; min-width: 0; }
+    .b-name { font-weight: 700; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .b-name a { color: inherit; text-decoration: none; }
+    .b-sub { font-size: 12px; color: var(--muted); margin-top: 2px; }
+    .b-dist { flex: none; font-family: var(--mono); font-size: 13px; text-align: right; }
+    .b-dist small { display: block; color: var(--muted); font-size: 11px; }
+    .note { font-size: 12px; color: var(--muted); margin-top: 8px; }
+
+    .tx { padding: 8px 0; border-top: 1px solid #183152; display: flex; gap: 10px; align-items: flex-start; }
+    .tx:first-of-type { border-top: none; }
+    .tx-play { flex: none; width: 32px; height: 32px; border-radius: 50%; border: 1px solid var(--cyan); background: transparent;
+               color: var(--cyan); font-size: 12px; cursor: pointer; margin-top: 1px; }
+    .tx-play.on { background: var(--cyan); color: var(--bg); }
+    .tx-time { font-family: var(--mono); font-size: 12px; color: var(--cyan); }
+    .tx-text { font-size: 13px; line-height: 1.4; color: #c9d6e6; margin-top: 2px; }
+    .tx-text.none { color: var(--muted); font-style: italic; }
+    .empty { color: var(--muted); font-size: 13px; padding: 6px 0; }
+    .msg { font-size: 13px; color: var(--amber); min-height: 0; margin-top: 6px; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="top">
+      <div class="title"><span class="place">ST. AUGUSTINE, FL</span>Bridge of Lions<small class="tagline">Live from onboard SV Nava</small></div>
+      <a class="back" href="/radio/player">← Player</a>
+    </div>
+
+    <div class="cam" id="cam"></div>
+    <div class="credit">
+      <span>Live cam: <a id="credit" target="_blank" rel="noopener"></a> (YouTube)</span>
+      <button class="linkbtn" onclick="changeVideo()">Stream moved? Change link</button>
+    </div>
+    <div id="msg" class="msg"></div>
+
+    <div class="grid">
+      <div class="card">
+        <h2>CH 09 · BRIDGE TENDER</h2>
+        <div class="radio-row">
+          <button id="listenBtn" class="big-btn" onclick="toggleListen()" aria-label="Listen to channel 09">▶</button>
+          <div class="radio-text"><b id="radioTitle">Listen live</b><span id="radioSub">Tune the radio to ch 09</span></div>
+        </div>
+        <audio id="radio" preload="none"></audio>
+      </div>
+
+      <div class="card">
+        <h2>BOATS NEAR THE BRIDGE <a href="/radio/ais/view">Ship map →</a></h2>
+        <div id="boats"><div class="empty">Loading…</div></div>
+        <div class="note" id="aisNote"></div>
+      </div>
+    </div>
+
+    <div class="card" style="margin-top:12px">
+      <h2>LATEST ON CH 09 <a href="/radio/recordings/view">All recordings →</a></h2>
+      <div id="txs"><div class="empty">Loading…</div></div>
+      <audio id="clip" preload="none"></audio>
+    </div>
+  </div>
+
+<script>
+  const BRIDGE = { lat: 29.8925, lon: -81.3086 };
+  const NEAR_NM = 1.5;
+  const clientId = (() => {
+    let id = null;
+    try { id = localStorage.getItem("navaos_client"); } catch (e) {}
+    if (!id) { id = (crypto.randomUUID ? crypto.randomUUID() : String(Math.random()).slice(2) + Date.now());
+               try { localStorage.setItem("navaos_client", id); } catch (e) {} }
+    return id;
+  })();
+  function savedPin() { try { return localStorage.getItem("navaos_pin"); } catch (e) { return null; } }
+  function el(tag, cls, text) { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; }
+  function msg(t) { document.getElementById("msg").textContent = t || ""; }
+  function ago(ts, now) {
+    const s = Math.max(0, (now || Date.now() / 1000) - ts);
+    if (s < 90) return "just now";
+    if (s < 3600) return Math.round(s / 60) + " min ago";
+    if (s < 86400) return Math.round(s / 3600) + " h ago";
+    return Math.round(s / 86400) + " d ago";
+  }
+
+  // ---------- live cam (official YouTube embed only) ----------
+  async function loadCam() {
+    let cfg;
+    try { cfg = await (await fetch("/radio/bridge/config?x=" + Date.now())).json(); } catch (e) { return; }
+    const cam = document.getElementById("cam");
+    if (!/^[A-Za-z0-9_-]{11}$/.test(cfg.video_id)) return;
+    const f = document.createElement("iframe");
+    f.src = "https://www.youtube-nocookie.com/embed/" + cfg.video_id + "?autoplay=1&mute=1&playsinline=1&rel=0";
+    f.title = "Bridge of Lions live cam";
+    f.allow = "autoplay; encrypted-media; picture-in-picture; fullscreen";
+    f.referrerPolicy = "strict-origin-when-cross-origin";
+    f.allowFullscreen = true;
+    cam.replaceChildren(f);
+    const a = document.getElementById("credit");
+    a.textContent = cfg.credit; a.href = cfg.credit_url;
+  }
+
+  async function changeVideo() {
+    const v = prompt("Paste the YouTube link of the Bridge of Lions live stream:");
+    if (!v) return;
+    const headers = { "Content-Type": "application/json" };
+    const pin = savedPin(); if (pin) headers["X-Override-Pin"] = pin;
+    const res = await fetch("/radio/bridge/config?client=" + encodeURIComponent(clientId), { method: "POST", headers, body: JSON.stringify({ video: v }) }).catch(() => null);
+    const d = res ? await res.json().catch(() => ({})) : {};
+    if (!res || !res.ok) { msg(d.detail || "Couldn't save that link."); return; }
+    msg(""); loadCam();
+  }
+
+  // ---------- ch 09 through the shared radio ----------
+  const audio = document.getElementById("radio");
+  let wantAudio = false, selection = { mode: "idle" };
+
+  async function control(action, channel) {
+    const res = await fetch("/radio/control", { method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action, channel, client: clientId, pin: savedPin() || null }) }).catch(() => null);
+    if (!res) { msg("Network error."); return null; }
+    const d = await res.json().catch(() => ({}));
+    if (!res.ok) { msg(d.detail || "That didn't work."); return null; }
+    return d;
+  }
+
+  function stopAudio() { audio.pause(); audio.removeAttribute("src"); audio.load(); }
+
+  function syncAudio() {
+    const on09 = selection.mode === "direct" && selection.channel === "09";
+    const have = audio.getAttribute("src") || "";
+    if (wantAudio && on09 && !have) {
+      audio.src = "/radio/stream/09.mp3?client=" + encodeURIComponent(clientId) + "&t=" + Date.now();
+      audio.play().catch(() => msg("Tap ▶ again to start the audio."));
+    } else if ((!wantAudio || !on09) && have) {
+      stopAudio();
+    }
+  }
+
+  function renderRadio(d) {
+    const btn = document.getElementById("listenBtn"), title = document.getElementById("radioTitle"), sub = document.getElementById("radioSub");
+    const on09 = selection.mode === "direct" && selection.channel === "09";
+    const ctl = d.control || {};
+    btn.classList.toggle("on", wantAudio && on09);
+    btn.textContent = wantAudio && on09 ? "❚❚" : "▶";
+    sub.className = "";
+    if (wantAudio && on09) { title.textContent = "Listening to ch 09"; sub.textContent = "Audio opens when someone transmits."; }
+    else if (ctl.pending && ctl.pending.yours) { title.textContent = "Ch 09 is queued"; sub.textContent = "Another listener has the radio - starts in " + Math.ceil(ctl.pending.applies_in_s / 60) + " min"; sub.className = "warn"; }
+    else if (on09) { title.textContent = "Radio is on ch 09"; sub.textContent = "Tap ▶ to listen in."; }
+    else if (selection.mode === "scan") { title.textContent = "Listen live"; sub.textContent = "Radio is scanning all channels - ▶ switches it to ch 09 (it records 09 either way when 09 is in the scan)."; }
+    else { title.textContent = "Listen live"; sub.textContent = "Tune the radio to ch 09"; }
+  }
+
+  async function toggleListen() {
+    const on09 = selection.mode === "direct" && selection.channel === "09";
+    if (wantAudio && on09) { wantAudio = false; stopAudio(); return pollStatus(); }
+    wantAudio = true;
+    const r = await control("tune", "09");
+    if (r && r.result === "queued") msg("Another listener has the radio - ch 09 is queued.");
+    else msg("");
+    pollStatus();
+  }
+
+  async function pollStatus() {
+    try {
+      const d = await (await fetch("/radio/status?client=" + encodeURIComponent(clientId) + "&x=" + Date.now())).json();
+      selection = d.selection || { mode: "idle" };
+      renderRadio(d); syncAudio();
+    } catch (e) {}
+  }
+  audio.onerror = audio.onended = () => { if (wantAudio) { audio.removeAttribute("src"); setTimeout(syncAudio, 1000); } };
+
+  // ---------- AIS boats near the bridge ----------
+  function nm(lat1, lon1, lat2, lon2) {
+    const r = Math.PI / 180, p1 = lat1 * r, p2 = lat2 * r;
+    const a = Math.sin((p2 - p1) / 2) ** 2 + Math.cos(p1) * Math.cos(p2) * Math.sin((lon2 - lon1) * r / 2) ** 2;
+    return 2 * 3440.065 * Math.asin(Math.sqrt(a));
+  }
+  function bearing(lat1, lon1, lat2, lon2) {
+    const r = Math.PI / 180, dl = (lon2 - lon1) * r;
+    const b = Math.atan2(Math.sin(dl) * Math.cos(lat2 * r), Math.cos(lat1 * r) * Math.sin(lat2 * r) - Math.sin(lat1 * r) * Math.cos(lat2 * r) * Math.cos(dl)) / r;
+    return (b + 360) % 360;
+  }
+  const DIRS = "N NE E SE S SW W NW".split(" ");
+  function compass(b) { return DIRS[Math.round(b / 45) % 8]; }
+  function moving(v) { return v.sog != null && v.sog >= 0.5 && v.sog < 102.3; }
+  // Heading toward the bridge if its course points within 60° of the bridge.
+  const FRESH_S = 900;   // only call movement "live" if the position is < 15 min old
+  let nowTs = Date.now() / 1000;
+  function fresh(v) { return nowTs - (v.pos_ts || v.last_seen) < FRESH_S; }
+  function approaching(v) {
+    if (!moving(v) || !fresh(v) || v.cog == null || v.cog >= 360) return null;
+    const toBridge = bearing(v.lat, v.lon, BRIDGE.lat, BRIDGE.lon);
+    const diff = Math.abs(((v.cog - toBridge + 540) % 360) - 180);
+    return diff < 60;
+  }
+
+  async function loadBoats() {
+    let d;
+    try { d = await (await fetch("/radio/ais/vessels?max_age_h=24&x=" + Date.now())).json(); } catch (e) { return; }
+    nowTs = d.now;
+    const near = d.vessels.filter(v => v.lat != null && nm(BRIDGE.lat, BRIDGE.lon, v.lat, v.lon) <= NEAR_NM)
+      .map(v => ({ v, d: nm(BRIDGE.lat, BRIDGE.lon, v.lat, v.lon) }))
+      .sort((a, b) => (moving(b.v) - moving(a.v)) || (a.d - b.d));
+    const box = document.getElementById("boats"); box.replaceChildren();
+    if (!near.length) box.appendChild(el("div", "empty", "No AIS boats within 1.5 nm in the last 24 hours."));
+    for (const { v, d: dist } of near.slice(0, 12)) {
+      const row = el("div", "boat");
+      const ap = approaching(v);
+      const live = moving(v) && fresh(v);
+      const arr = el("div", "arrow" + (ap === true ? " in" : ap === false ? " out" : ""), ap === true ? "➜" : live ? "↗" : "⚓");
+      arr.title = ap === true ? "Heading toward the bridge" : ap === false ? "Moving away" : moving(v) ? "Was moving when last heard" : "Not moving";
+      const main = el("div", "b-main");
+      const name = el("div", "b-name"); const a = el("a", null, v.name || "MMSI " + v.mmsi);
+      a.href = "/radio/ais/view#mmsi=" + encodeURIComponent(v.mmsi); name.appendChild(a);
+      const len = (v.to_bow || 0) + (v.to_stern || 0);
+      const kind = v.shiptype === 36 ? "Sailing" : v.shiptype === 37 ? "Pleasure" : v.kind === "A" ? "Class A" : "Vessel";
+      const bits = [kind + (len > 1 ? " · " + Math.round(len * 3.281) + " ft" : "")];
+      if (moving(v)) bits.push((live ? "" : "was ") + v.sog.toFixed(1) + " kn" + (ap === true ? " toward bridge" : ""));
+      bits.push("seen " + ago(v.pos_ts || v.last_seen, d.now));
+      main.append(name, el("div", "b-sub", bits.join(" · ")));
+      const dd = el("div", "b-dist", dist.toFixed(2) + " nm");
+      dd.appendChild(el("small", null, compass(bearing(BRIDGE.lat, BRIDGE.lon, v.lat, v.lon)) + " of bridge"));
+      row.append(arr, main, dd); box.appendChild(row);
+    }
+    const ais = d.ais || {};
+    document.getElementById("aisNote").textContent =
+      (ais.last_window ? "AIS last updated " + ago(ais.last_window.end, d.now) + ". " : "") +
+      "Positions refresh between scans, and not while someone is listening.";
+  }
+
+  // ---------- latest ch 09 transmissions ----------
+  const clip = document.getElementById("clip");
+  let playing = null;
+  async function loadTx() {
+    if (!clip.paused) return;   // don't redraw under a clip that's playing
+    let list;
+    try { list = await (await fetch("/radio/recordings?channel=09&limit=8&x=" + Date.now())).json(); } catch (e) { return; }
+    const box = document.getElementById("txs"); box.replaceChildren();
+    if (!list.length) box.appendChild(el("div", "empty", "No ch 09 transmissions recorded yet."));
+    for (const c of list) {
+      const row = el("div", "tx");
+      const b = el("button", "tx-play", "▶");
+      b.onclick = () => {
+        if (playing === b && !clip.paused) { clip.pause(); b.textContent = "▶"; b.classList.remove("on"); return; }
+        document.querySelectorAll(".tx-play").forEach(x => { x.textContent = "▶"; x.classList.remove("on"); });
+        clip.src = "/radio/recordings/file/" + c.path; clip.play().catch(() => {});
+        playing = b; b.textContent = "❚❚"; b.classList.add("on");
+      };
+      const main = el("div");
+      main.appendChild(el("div", "tx-time", c.time.slice(11, 19) + " · " + c.duration_s.toFixed(1) + " s · " + ago(c.ts)));
+      const t = c.transcript;
+      main.appendChild(el("div", "tx-text" + (t ? "" : " none"), t || (t === "" ? "(no speech recognised)" : "transcribing…")));
+      row.append(b, main); box.appendChild(row);
+    }
+  }
+  clip.onended = () => document.querySelectorAll(".tx-play").forEach(x => { x.textContent = "▶"; x.classList.remove("on"); });
+
+  loadCam(); pollStatus(); loadBoats(); loadTx();
+  setInterval(pollStatus, 3000);
+  setInterval(loadBoats, 20000);
+  setInterval(loadTx, 15000);
+</script>
+</body>
+</html>

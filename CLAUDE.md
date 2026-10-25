@@ -106,6 +106,17 @@ Legacy path (`ChannelConfig.receiver="rtl_fm"`): rtl_fm → AdaptiveSquelch
   line chart with reference line + crosshair tooltip, per-channel bars,
   "Mark this spot" table (stored in that browser's localStorage). Linked
   from the player's TOOLS row.
+- `api/templates/bridge.html` — **Bridge of Lions watch page** (`/radio/bridge/view`,
+  2026-10-25): official YouTube embed (youtube-nocookie, muted autoplay) of the
+  public "See St. Augustine" live cam — **embed only, never capture frames**
+  (YouTube ToS + copyright; Kevin will ask the owner about permission/partnering
+  once there's something to show; their VHF audio only ran for a week). Video id
+  is a setting: `GET/POST /radio/bridge/config` (`~/navaos-data/bridge_cam.json`,
+  settings-locked, accepts any YouTube link form; default `uLJBad4vSno`, checked
+  embeddable via oEmbed). Plus ch 09 listen button (normal `/control` tune 09 +
+  queue rules), AIS boats ≤1.5 nm of the bridge from the last 24 h ("toward
+  bridge" only if the fix is <15 min old), and the latest 8 ch 09 clips with
+  transcripts. Linked from the player's TOOLS grid (now 2×2).
 - `static/` — images served at `/radio/static/<name>` (e.g. `hero.jpg`, the
   player header photo; page falls back to a gradient if it's missing).
 - `navaos_audio/` package:

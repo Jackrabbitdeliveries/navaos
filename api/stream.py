@@ -346,6 +346,53 @@ def ais_now(client: str | None = None, x_override_pin: str | None = Header(defau
     return control.ais_status()
 
 
+# ---- Bridge page --------------------------------------------------------
+# A watch page for the Bridge of Lions: an embedded public YouTube live cam
+# (official embedded player only - no frames are captured or stored), ch 09
+# audio through the normal shared-radio rules, AIS boats near the bridge and
+# the latest ch 09 transcripts. The video id is a setting because live streams
+# get a new id when they restart.
+
+_BRIDGE_CFG = Path.home() / "navaos-data" / "bridge_cam.json"
+_BRIDGE_DEFAULT = {"video_id": "uLJBad4vSno", "credit": "See St. Augustine",
+                   "credit_url": "https://www.youtube.com/@seestaug"}
+_YT_ID_RE = re.compile(r"(?:v=|youtu\.be/|/live/|/embed/)?([A-Za-z0-9_-]{11})(?:[?&#]|$)")
+
+
+def _bridge_cfg() -> dict:
+    try:
+        return {**_BRIDGE_DEFAULT, **json.loads(_BRIDGE_CFG.read_text())}
+    except (OSError, ValueError):
+        return dict(_BRIDGE_DEFAULT)
+
+
+@router.get("/bridge/config")
+def bridge_config():
+    return _bridge_cfg()
+
+
+class BridgeConfig(BaseModel):
+    video: str   # a YouTube link or bare 11-character video id
+
+
+@router.post("/bridge/config")
+def set_bridge_config(req: BridgeConfig, client: str | None = None,
+                      x_override_pin: str | None = Header(default=None)):
+    _check_settings(client, x_override_pin)
+    m = _YT_ID_RE.search(req.video.strip())
+    if not m:
+        raise HTTPException(400, "That doesn't look like a YouTube link or video id.")
+    cfg = {**_bridge_cfg(), "video_id": m.group(1)}
+    _BRIDGE_CFG.parent.mkdir(parents=True, exist_ok=True)
+    _BRIDGE_CFG.write_text(json.dumps(cfg))
+    return cfg
+
+
+@router.get("/bridge/view")
+def bridge_page():
+    return HTMLResponse(_render("bridge.html"))
+
+
 @router.get("/ais/view")
 def ais_page():
     return HTMLResponse(_render("ais.html"))
