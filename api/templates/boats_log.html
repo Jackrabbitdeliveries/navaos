@@ -99,7 +99,9 @@
       else if (s.ai_status !== "done") what.appendChild(el("span", "err", "No AI answer"));
       else if (!ai.is_sailboat) what.textContent = "Not a sailboat";
       else {
-        if (ai.visible_name) { what.appendChild(el("span", "name", ai.visible_name)); what.append(" · "); }
+        const ch = s.ais && s.ais.user_choice;
+        if (ch && !ch.none && ch.name) { what.appendChild(el("span", "name", "⚓ " + ch.name)); what.append(" · "); }
+        else if (ai.visible_name) { what.appendChild(el("span", "name", ai.visible_name)); what.append(" · "); }
         const c = s.confirm;
         if (c && !c.model_unknown) { what.append((c.make + " " + c.model).trim()); what.appendChild(el("span", "ok", " ✓")); }
         else {

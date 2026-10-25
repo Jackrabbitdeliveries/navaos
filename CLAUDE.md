@@ -236,6 +236,28 @@ Legacy path (`ChannelConfig.receiver="rtl_fm"`): rtl_fm → AdaptiveSquelch
     "None of these" form (make/model with autocomplete, "don't know", hull/
     rig/size chips), confirmed card with Change; model row joins the score.
     Log page shows the confirmed name ✓ and counts the model point.
+  - **Piece 3 (2026-10-25): AIS reveal.** `reveal.py`: per-vessel position at
+    photo time from VesselDB tracks (moored = last fix ±30 m, ≤24 h old;
+    movers = interpolated between fixes ≤20 min apart, else projected ≤10 min
+    along SOG/COG, else unknown), aim = magnetic heading + declination
+    (kit.json `declination_deg`, default −7.6° St. Augustine) + tap offset
+    (FOV 69° landscape / 50° portrait). Candidate if within 4 km and angle ≤
+    1.5 × (compass err [phone value or 20°] + min(15°, position uncertainty
+    angle)); a hull name matching an AIS name (≥0.85) within 8 km wins
+    outright. Status unavailable | match (name match, or best z ≤1 with a
+    ≥0.6 margin) | ambiguous | none; plus `nearby` (all AIS boats ≤1.5 km)
+    for manual picks. A thread re-runs every 15 s until an AIS window ends
+    after the photo (or 13 min) → `final`. Snap page calls
+    `POST /radio/ais/now` when the camera starts and at the shutter (pauses
+    voice scan; refused if someone listens → waits for the next window).
+    Routes: `POST /boats/sightings/{id}/ais {mmsi|null}` (user's answer; logs
+    `BOATID-COMPASS error=…` = true bearing to chosen boat − aim → compass
+    calibration from normal use), `POST …/ais/reset` (Change). Result screen
+    "AIS REVEAL" card (match → Yes/No; ambiguous → pick; none → nearby
+    picker; "It's not on AIS"); AIS length verifies size (you/AI ✓✗). Log
+    shows ⚓ name. **First real data:** Kevin's 17:22 snap aimed 189° true
+    with only SAIFIR (19 m away, 32° off) in view — awaiting Kevin's answer
+    on which boat it was (if the mooring field ~220°, compass ≈ +30° off).
   - Not built yet: piece 3 AIS reveal
     (snap-triggered AIS burst; `visible_name` ↔ AIS names), piece 4 scoring log.
   - `.gitignore` now ignores *.jpg/*.jpeg/*.png/*.heic/*.webp everywhere

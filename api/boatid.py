@@ -18,7 +18,7 @@ from fastapi import APIRouter, HTTPException
 from fastapi.responses import FileResponse, HTMLResponse
 from pydantic import BaseModel
 
-from navaos_boatid import identify, library, store
+from navaos_boatid import identify, library, reveal, store
 
 router = APIRouter(prefix="/boats", tags=["boat-id"])
 
@@ -92,6 +92,7 @@ def create_sighting(req: NewSighting):
         "sensors": req.sensors, "guess": guess, "ai_status": "pending",
     })
     identify.start(sid)
+    reveal.start(sid)
     return {"id": sid}
 
 
@@ -176,6 +177,61 @@ def confirm(sid: str, req: Confirm):
     }
     conf["points"] = _model_points(row, conf)
     store.update(sid, confirm=conf)
+    return _public(store.get(sid))
+
+
+class AisChoice(BaseModel):
+    mmsi: int | None = None         # None = "not on AIS / none of these"
+
+
+@router.post("/sightings/{sid}/ais")
+def ais_choice(sid: str, req: AisChoice):
+    """The user's answer to the AIS reveal. Also records how far off the
+    compass was (true bearing to the chosen boat minus the aim), which is the
+    compass calibration data (experiment E2) collected through normal use."""
+    row = store.get(sid)
+    if row is None:
+        raise HTTPException(404, "No such sighting")
+    res = dict(row.get("ais") or {})
+    choice = {"at": time.time(), "none": req.mmsi is None}
+    if req.mmsi is not None:
+        from navaos_audio.ais import ais_service
+        v = ais_service.db.get(str(req.mmsi))
+        if v is None:
+            raise HTTPException(404, "Unknown vessel")
+        known = {c["mmsi"]: c for c in (res.get("candidates") or []) + (res.get("nearby") or [])}
+        c = known.get(req.mmsi, {})
+        length = (v.get("to_bow") or 0) + (v.get("to_stern") or 0)
+        choice.update(mmsi=req.mmsi, name=v.get("name") or "", shiptype=v.get("shiptype"),
+                      length_m=length if length > 1 else None,
+                      size_class=reveal.size_class(length) if length > 1 else None,
+                      distance_m=c.get("distance_m"), bearing=c.get("bearing"))
+        if res.get("aim_true_deg") is not None and c.get("bearing") is not None:
+            choice["compass_error_deg"] = round((c["bearing"] - res["aim_true_deg"] + 180) % 360 - 180)
+    res["user_choice"] = choice
+    res["final"] = True
+    store.update(sid, ais=res)
+    if choice.get("compass_error_deg") is not None:
+        print(f"BOATID-COMPASS {sid} error={choice['compass_error_deg']}deg dist={choice.get('distance_m')}m", flush=True)
+    return _public(store.get(sid))
+
+
+@router.post("/sightings/{sid}/ais/reset")
+def ais_reset(sid: str):
+    """'Change' on the AIS answer: forget the user's choice and re-run the match."""
+    row = store.get(sid)
+    if row is None:
+        raise HTTPException(404, "No such sighting")
+    res = dict(row.get("ais") or {})
+    res.pop("user_choice", None)
+    store.update(sid, ais=res)
+    try:
+        from navaos_audio.ais import ais_service
+        res = reveal.match(store.get(sid), ais_service.db.snapshot(26 * 3600, with_track=True))
+        res["final"] = True
+        store.update(sid, ais=res)
+    except Exception as e:
+        print(f"BOATID-AIS-RESET-FAILED {sid}: {e!r}", flush=True)
     return _public(store.get(sid))
 
 

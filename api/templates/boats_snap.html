@@ -105,6 +105,18 @@
     .chk { font-size: 14px; color: #c9d6e6; display: flex; align-items: center; gap: 8px; }
     .confirmed { text-align: center; padding: 6px 0; }
     .conf-name { font-size: 22px; font-weight: 800; color: var(--green); margin: 4px 0 6px; }
+    .ais-lead { font-size: 14px; color: #c9d6e6; margin-top: 2px; }
+    .ais-big { font-size: 24px; font-weight: 800; color: var(--amber); margin: 4px 0; }
+    .ais-big.muted { color: var(--muted); }
+    .waitnote { color: var(--amber); margin-bottom: 6px; }
+    .verify { font-size: 14px; margin: 8px 0 4px; }
+    .verify .yes { color: var(--green); font-weight: 700; } .verify .no { color: var(--red); font-weight: 700; }
+    .vrow { display: flex; width: 100%; align-items: center; gap: 10px; text-align: left; font: inherit; color: var(--text);
+            background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 9px 10px; margin-top: 6px; cursor: pointer; }
+    .vmain { flex: 1; min-width: 0; }
+    .vmain b { font-size: 15px; }
+    .vgo { flex: none; font-size: 12px; font-weight: 700; color: var(--cyan); }
+    .card a { color: var(--cyan); text-decoration: none; }
     .small { font-size: 12px; color: var(--muted); line-height: 1.5; }
     .err { color: var(--red); font-size: 14px; margin-top: 8px; }
   </style>
@@ -136,6 +148,7 @@
       </div>
       <!-- Same readouts below the camera too, in case an overlay is ever hidden. -->
       <div class="readout-row"><span id="rdGps">GPS …</span><span id="rdHead">heading …</span></div>
+      <div class="small" id="aisState" style="margin-top:4px"></div>
       <div class="small" style="margin-top:6px">Hold the phone steady, pointing straight at the boat, and tap the white button.</div>
     </div>
 
@@ -230,6 +243,17 @@
     }
   }
 
+  function savedPin() { try { return localStorage.getItem("navaos_pin"); } catch (e) { return null; } }
+  let aisMsg = "";
+  async function aisNow() {
+    const headers = {}; const pin = savedPin(); if (pin) headers["X-Override-Pin"] = pin;
+    try {
+      const r = await fetch("/radio/ais/now?client=" + encodeURIComponent(clientId), { method: "POST", headers });
+      aisMsg = r.ok ? "AIS: updating ship positions" : r.status === 409 ? "AIS: radio busy - will use the next update" : "AIS: not now - will use the next update";
+    } catch (e) { aisMsg = ""; }
+    const a = document.getElementById("aisState"); if (a) a.textContent = aisMsg;
+  }
+
   function compassPoint(d) { return "N NNE NE ENE E ESE SE SSE S SSW SW WSW W WNW NW NNW".split(" ")[Math.round(d / 22.5) % 16]; }
 
   function updateHud() {
@@ -258,6 +282,7 @@
     $("video").srcObject = stream;
     show("stLive");
     hudTimer = setInterval(updateHud, 500); updateHud();
+    aisNow();   // fresh ship positions while you aim (briefly pauses the voice scan)
   }
   function stopCamera() { if (stream) stream.getTracks().forEach(t => t.stop()); stream = null; clearInterval(hudTimer); }
 
@@ -288,6 +313,7 @@
     };
     const j = toJpeg(v, v.videoWidth, v.videoHeight);
     shot = { ...j, source: "phone", taken_at: takenAt, sensors };
+    aisNow();   // and right after the photo, so moving boats have a fix just after it
     stopCamera();
     openGuess();
   }
@@ -355,13 +381,20 @@
     try { history.replaceState(null, "", "#" + id); } catch (e) {}
     clearInterval(pollTimer);
     const t0 = Date.now();
+    let rendered = false;
     pollTimer = setInterval(async () => {
       let d;
       try { d = await (await fetch("/boats/sightings/" + id + "?x=" + Date.now())).json(); } catch (e) { return; }
-      if (d.ai_status === "pending" && Date.now() - t0 < 150000) return;
-      clearInterval(pollTimer);
-      renderResult(d);
-    }, 2000);
+      if (!rendered) {
+        if (d.ai_status === "pending" && Date.now() - t0 < 150000) return;
+        renderResult(d); rendered = true;
+      } else {
+        renderAis(d);
+      }
+      const a = d.ais || {};
+      const settled = a.final || (a.user_choice != null);
+      if ((rendered && settled) || Date.now() - t0 > 14 * 60000) clearInterval(pollTimer);
+    }, 3000);
   }
 
   function mark(user, ai) {
@@ -421,6 +454,7 @@
     box.appendChild(card);
 
     box.appendChild(buildCompare(d));
+    const ac = el("div", "card"); ac.id = "aisCard"; box.appendChild(ac); renderAis(d);
 
     const sc = el("div", "card");
     sc.appendChild(el("h2", null, "CAPTURED WITH THE PHOTO"));
@@ -434,6 +468,117 @@
     if (d.ai_meta) lines.push(`${d.ai_meta.model} · ${d.ai_meta.seconds} s · ${d.ai_meta.input_tokens + d.ai_meta.output_tokens} tokens`);
     for (const l of lines) sc.appendChild(el("div", "small", l));
     box.appendChild(sc);
+  }
+
+  // ---------- AIS reveal ----------
+  const SIZE_FT = { under_30: "under 30 ft", "30_39": "30–39 ft", "40_49": "40–49 ft", "50_plus": "50+ ft" };
+  function dist(m) { return m < 400 ? Math.round(m * 3.281) + " ft away" : (m / 1852).toFixed(2) + " nm away"; }
+  function agoTxt(s) { return s < 90 ? Math.round(s) + " s" : Math.round(s / 60) + " min"; }
+
+  async function aisChoose(id, mmsi) {
+    const res = await fetch("/boats/sightings/" + id + "/ais", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ mmsi }) }).catch(() => null);
+    const d = res ? await res.json().catch(() => null) : null;
+    if (!res || !res.ok) { alert((d && d.detail) || "Couldn't save - try again."); return; }
+    renderAis(d);
+  }
+  async function aisReset(id) {
+    const res = await fetch("/boats/sightings/" + id + "/ais/reset", { method: "POST" }).catch(() => null);
+    if (res && res.ok) renderAis(await res.json());
+  }
+
+  function vesselRow(id, c, extra) {
+    const row = el("button", "vrow");
+    const main = el("div", "vmain");
+    main.appendChild(el("b", null, c.name || "MMSI " + c.mmsi));
+    const bits = [];
+    if (c.sailing) bits.push("Sailing");
+    if (c.length_m) bits.push(Math.round(c.length_m * 3.281) + " ft");
+    bits.push(dist(c.distance_m));
+    if (extra) bits.push(extra);
+    main.appendChild(el("div", "small", bits.join(" · ")));
+    row.append(main, el("span", "vgo", "This one"));
+    row.onclick = () => aisChoose(id, c.mmsi);
+    return row;
+  }
+
+  function nearbyPicker(id, a) {
+    const wrap = el("div");
+    const list = (a.nearby || []);
+    const btn = el("button", "linkbtn", list.length ? `Pick from ${list.length} AIS boats within 1.5 km` : "");
+    const box = el("div"); box.hidden = true;
+    for (const n of list) box.appendChild(vesselRow(id, n, "bearing " + n.bearing + "°"));
+    btn.onclick = () => { box.hidden = !box.hidden; };
+    if (list.length) wrap.append(btn, box);
+    return wrap;
+  }
+
+  function renderAis(d) {
+    const card = document.getElementById("aisCard");
+    if (!card) return;
+    card.replaceChildren(el("h2", null, "AIS REVEAL"));
+    const a = d.ais;
+    if (!a) { card.appendChild(el("div", "small", "Checking AIS…")); return; }
+    if (a.status === "unavailable" || a.status === "error") { card.appendChild(el("div", "small", a.reason || "No AIS check for this photo.")); return; }
+    const ch = a.user_choice;
+    if (ch) {
+      if (ch.none) card.appendChild(el("div", "ais-big muted", "Not on AIS"));
+      else {
+        card.appendChild(el("div", "ais-big", "⚓ " + (ch.name || "MMSI " + ch.mmsi)));
+        const bits = [];
+        if (ch.shiptype === 36) bits.push("Sailing");
+        if (ch.length_m) bits.push(Math.round(ch.length_m * 3.281) + " ft (" + SIZE_FT[ch.size_class] + ")");
+        if (ch.distance_m != null) bits.push(dist(ch.distance_m));
+        card.appendChild(el("div", "small", bits.join(" · ")));
+        if (ch.size_class) {   // AIS length is ground truth for size
+          const g = (d.guess || {}).size, ai = (d.ai || {}).size_class;
+          const v = el("div", "verify");
+          v.append("AIS-verified size: ");
+          if (g && g !== "unknown") v.appendChild(el("span", g === ch.size_class ? "yes" : "no", "you " + (g === ch.size_class ? "✓" : "✗")));
+          v.append("  ");
+          if (ai && ai !== "unknown") v.appendChild(el("span", ai === ch.size_class ? "yes" : "no", "AI " + (ai === ch.size_class ? "✓" : "✗")));
+          card.appendChild(v);
+        }
+        if (ch.compass_error_deg != null) card.appendChild(el("div", "small", `Your compass was off by ${ch.compass_error_deg > 0 ? "+" : ""}${ch.compass_error_deg}° on this one (that helps tune it).`));
+        const links = el("div", "small");
+        const m = el("a", null, "Show on the ship map →"); m.href = "/radio/ais/view#mmsi=" + encodeURIComponent(ch.mmsi);
+        links.appendChild(m); card.appendChild(links);
+      }
+      const chg = el("button", "linkbtn", "Change"); chg.onclick = () => aisReset(d.id); card.appendChild(chg);
+      return;
+    }
+    const c0 = (a.candidates || [])[0];
+    if (!a.final) card.appendChild(el("div", "small waitnote", "⏳ " + (a.waiting_reason || "Waiting for AIS") + " - this can change."));
+    if (a.status === "match" && c0) {
+      card.appendChild(el("div", "ais-lead", c0.name_match ? "The name on the hull matches AIS:" : "AIS says that's"));
+      card.appendChild(el("div", "ais-big", "⚓ " + (c0.name || "MMSI " + c0.mmsi)));
+      const bits = [];
+      if (c0.sailing) bits.push("Sailing");
+      if (c0.length_m) bits.push(Math.round(c0.length_m * 3.281) + " ft");
+      bits.push(dist(c0.distance_m));
+      if (c0.off_deg != null && !c0.name_match) bits.push(c0.off_deg + "° from your aim");
+      bits.push((c0.pos_method === "moored" ? "moored" : c0.pos_method) + ", AIS fix " + agoTxt(c0.pos_age_s) + (c0.pos_method === "from later fix" ? " after" : " from") + " the photo");
+      card.appendChild(el("div", "small", bits.join(" · ")));
+      const row = el("div", "row");
+      const yes = el("button", "btn primary", "Yes, that's her"); yes.onclick = () => aisChoose(d.id, c0.mmsi);
+      const no = el("button", "btn", "No"); no.onclick = () => { row.remove(); others.hidden = false; };
+      row.append(yes, no); card.appendChild(row);
+      const others = el("div"); others.hidden = true;
+      for (const c of (a.candidates || []).slice(1)) others.appendChild(vesselRow(d.id, c, c.off_deg + "° off"));
+      const nb = el("button", "btn", "It's not on AIS"); nb.onclick = () => aisChoose(d.id, null);
+      others.append(nearbyPicker(d.id, a), nb);
+      card.appendChild(others);
+      return;
+    }
+    if (a.status === "ambiguous") {
+      card.appendChild(el("div", "ais-lead", "Which of these is it?"));
+      for (const c of a.candidates) card.appendChild(vesselRow(d.id, c, c.name_match ? "name matches" : c.off_deg + "° off"));
+    } else {
+      card.appendChild(el("div", "ais-lead", "No AIS boat in that direction"));
+      card.appendChild(el("div", "small", "Most small boats don't broadcast AIS - or the compass may be off. If you know it's one of these, pick it:"));
+    }
+    card.appendChild(nearbyPicker(d.id, a));
+    const nb = el("button", "btn", "It's not on AIS"); nb.style.marginTop = "8px"; nb.onclick = () => aisChoose(d.id, null);
+    card.appendChild(nb);
   }
 
   // ---------- comparison: "which is it?" ----------
