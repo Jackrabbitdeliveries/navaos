@@ -36,11 +36,17 @@
 
     .viewer { position: relative; border-radius: 14px; overflow: hidden; border: 1px solid var(--line); background: #000; margin-top: 12px; }
     .viewer video, .viewer img { display: block; width: 100%; height: auto; }
-    .hud { position: absolute; left: 8px; right: 8px; top: 8px; display: flex; justify-content: space-between; gap: 6px; pointer-events: none; }
-    .hud span { font-family: var(--mono); font-size: 12px; background: rgba(7,17,31,0.75); padding: 3px 7px; border-radius: 6px; }
+    /* z-index + translateZ: iOS Safari can paint a playing <video> over absolutely
+       positioned siblings, which hid these readouts on Kevin's iPhone. */
+    .viewer video { position: relative; z-index: 0; }
+    .hud { position: absolute; left: 8px; right: 8px; top: 8px; display: flex; justify-content: space-between; gap: 6px;
+           pointer-events: none; z-index: 2; transform: translateZ(0); }
+    .hud span { font-family: var(--mono); font-size: 14px; font-weight: 700; background: rgba(7,17,31,0.85); padding: 4px 9px; border-radius: 8px; }
     .hud .ok { color: var(--green); } .hud .meh { color: var(--amber); } .hud .bad { color: var(--red); }
-    .shutter { position: absolute; left: 50%; bottom: 14px; transform: translateX(-50%); width: 68px; height: 68px; border-radius: 50%;
+    .shutter { z-index: 2; position: absolute; left: 50%; bottom: 14px; transform: translateX(-50%); width: 68px; height: 68px; border-radius: 50%;
                border: 4px solid #fff; background: rgba(255,255,255,0.25); cursor: pointer; }
+    .readout-row { display: flex; justify-content: space-between; gap: 8px; margin-top: 8px; font-family: var(--mono); font-size: 15px; font-weight: 700; }
+    .readout-row .ok { color: var(--green); } .readout-row .meh { color: var(--amber); } .readout-row .bad { color: var(--red); }
     .marker { position: absolute; width: 34px; height: 34px; margin: -17px 0 0 -17px; border: 3px solid var(--amber); border-radius: 50%;
               box-shadow: 0 0 0 2px rgba(0,0,0,0.6); pointer-events: none; }
     .tap-hint { position: absolute; left: 0; right: 0; bottom: 10px; text-align: center; pointer-events: none; }
@@ -107,6 +113,8 @@
         <div class="hud"><span id="hudGps">GPS …</span><span id="hudHead">heading …</span></div>
         <button class="shutter" onclick="snap()" aria-label="Take photo"></button>
       </div>
+      <!-- Same readouts below the camera too, in case an overlay is ever hidden. -->
+      <div class="readout-row"><span id="rdGps">GPS …</span><span id="rdHead">heading …</span></div>
       <div class="small" style="margin-top:6px">Hold the phone steady, pointing straight at the boat, and tap the white button.</div>
     </div>
 
@@ -201,13 +209,17 @@
     }
   }
 
+  function compassPoint(d) { return "N NNE NE ENE E ESE SE SSE S SSW SW WSW W WNW NW NNW".split(" ")[Math.round(d / 22.5) % 16]; }
+
   function updateHud() {
     const g = $("hudGps"), h = $("hudHead");
     if (!S.pos) { g.textContent = "GPS waiting…"; g.className = "meh"; }
     else { const a = Math.round(S.pos.accuracy); g.textContent = "GPS ±" + a + " m"; g.className = a <= 20 ? "ok" : a <= 100 ? "meh" : "bad"; }
     const hd = currentHeading();
     if (hd == null) { h.textContent = S.orient ? "hold phone upright" : "no compass"; h.className = "meh"; }
-    else { h.textContent = "heading " + Math.round(hd) + "°"; h.className = "ok"; }
+    else { h.textContent = "heading " + Math.round(hd) + "° " + compassPoint(hd); h.className = "ok"; }
+    $("rdGps").textContent = g.textContent; $("rdGps").className = g.className;
+    $("rdHead").textContent = h.textContent; $("rdHead").className = h.className;
   }
 
   // ---------- camera ----------
