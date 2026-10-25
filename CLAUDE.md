@@ -436,7 +436,9 @@ metric = (8–16 kHz energy) − (0.3–3 kHz energy):
 (No GitHub issues exist yet — the deploy key can't use the issues API. Track
 here until issues are set up.)
 
-- **Boat ID ("guess, then reveal") — PLAN ONLY, awaiting Kevin's review:**
+- **Boat ID ("guess, then reveal") — APPROVED 2026-10-25, build Phase 1 next
+  (option B, sailboats only, Opus 5, single dongle, no lock-down; see the
+  "Decisions so far" section of the plan). Plan:**
   `docs/boat-id-plan.md` (2026-10-25). No code written. Key finding: with
   today's timeshared AIS, a moving-boat AIS reveal would work only ~3–10% of
   daytime moments (AIS never runs while someone listens) → recommends a 2nd

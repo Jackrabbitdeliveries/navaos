@@ -18,6 +18,12 @@ Pi._
 | **D6** | **No lock-down yet** — Kevin is effectively the only user. Photos keep random, unguessable IDs and aren't listed anywhere public. Revisit before anyone else uses it. |
 | **Scope** | **Sailboats only** for the first version, to prove the idea. |
 
+**Next (2026-10-25): Kevin chose option B** — skip the separate Phase 0
+experiments and build the Phase 1 sailboat pages directly, in usable pieces:
+(1) Snap page + Claude Opus 5 guesses, (2) comparison screen, (3) AIS reveal
+(snap-triggered AIS burst), (4) scoring + "My sightings" log. Experiments
+happen naturally through use.
+
 Still open: D1 (name — defaulting to `/boats`), D5 (library bootstrap), D7, D8, D9 — the defaults below apply unless Kevin says otherwise.
 
 ### What "sailboats only" means in practice
