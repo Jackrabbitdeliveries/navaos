@@ -135,8 +135,11 @@ def match(row: dict, vessels: list[dict]) -> dict:
     cerr = float(acc) if isinstance(acc, (int, float)) and 0 < acc < 90 else DEFAULT_COMPASS_ERR
     gps_err = float(s.get("accuracy_m") or 30)
 
+    own = kit.get("own_mmsi")
     cands, nearby = [], []
     for v in vessels:
+        if own and v.get("mmsi") == own:
+            continue                     # never offer the kit's own boat (Nava) as the answer
         pos = estimate_position(v, t)
         if pos is None:
             continue

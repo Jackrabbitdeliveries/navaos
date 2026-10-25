@@ -255,9 +255,14 @@ Legacy path (`ChannelConfig.receiver="rtl_fm"`): rtl_fm → AdaptiveSquelch
     calibration from normal use), `POST …/ais/reset` (Change). Result screen
     "AIS REVEAL" card (match → Yes/No; ambiguous → pick; none → nearby
     picker; "It's not on AIS"); AIS length verifies size (you/AI ✓✗). Log
-    shows ⚓ name. **First real data:** Kevin's 17:22 snap aimed 189° true
-    with only SAIFIR (19 m away, 32° off) in view — awaiting Kevin's answer
-    on which boat it was (if the mooring field ~220°, compass ≈ +30° off).
+    shows ⚓ name. **Nava's own AIS:** Class B, **MMSI 368120680, call sign
+    WDL3337, still transmitting the previous owner's name "SAIFIR"**, 36 ft
+    (Kevin wants to change the name). Recorded as `own_mmsi` in
+    `~/navaos-data/kit.json`; `reveal.match` never offers the own boat.
+    **First real data:** Kevin's 17:22 snap aimed 189° true
+    with only SAIFIR (19 m away) in view — SAIFIR is Nava itself; Kevin was on
+    Nava's dock photographing a neighbour that isn't on AIS → correct answer
+    "none" (which it now returns).
   - Not built yet: piece 3 AIS reveal
     (snap-triggered AIS burst; `visible_name` ↔ AIS names), piece 4 scoring log.
   - `.gitignore` now ignores *.jpg/*.jpeg/*.png/*.heic/*.webp everywhere
