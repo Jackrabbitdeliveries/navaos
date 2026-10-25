@@ -261,9 +261,16 @@ Legacy path (`ChannelConfig.receiver="rtl_fm"`): rtl_fm → AdaptiveSquelch
     calibration from normal use), `POST …/ais/reset` (Change). Result screen
     "AIS REVEAL" card (match → Yes/No; ambiguous → pick; none → nearby
     picker; "It's not on AIS"); AIS length verifies size (you/AI ✓✗). Log
-    shows ⚓ name. **Nava's own AIS:** Class B, **MMSI 368120680, call sign
-    WDL3337, still transmitting the previous owner's name "SAIFIR"**, 36 ft
-    (Kevin wants to change the name). Recorded as `own_mmsi` in
+    shows ⚓ name. **Nava's own AIS:** **B&G NAIS-500 Class B transponder**
+    (own GPS + VHF antenna, on the NMEA 2000 network with a **B&G Vulcan 9**
+    plotter), **MMSI 368120680, call sign WDL3337, still transmitting the
+    previous owner's name "SAIFIR"**, 36 ft. Kevin wants to rename it: NAIS-500
+    static data is set via the Vulcan and normally locked after first entry →
+    dealer reset; sort out the FCC license/MMSI first. Nava's VHF is a
+    **Standard Horizon GX2150 Matrix AIS+** (AIS *receive-only*); on 2026-10-25
+    it showed "POS Data is over 4 Hours" (no position → DSC distress would lack
+    a position) — told Kevin to check its position link. If Nava's MMSI changes,
+    update `own_mmsi` in kit.json. Recorded as `own_mmsi` in
     `~/navaos-data/kit.json`; `reveal.match` never offers the own boat.
     **First real data:** Kevin's 17:22 snap aimed 189° true
     with only SAIFIR (19 m away) in view — SAIFIR is Nava itself; Kevin was on
