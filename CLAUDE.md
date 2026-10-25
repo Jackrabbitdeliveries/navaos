@@ -266,7 +266,11 @@ Legacy path (`ChannelConfig.receiver="rtl_fm"`): rtl_fm → AdaptiveSquelch
     plotter), **MMSI 368120680, call sign WDL3337, still transmitting the
     previous owner's name "SAIFIR"**, 36 ft. Kevin wants to rename it: NAIS-500
     static data is set via the Vulcan and normally locked after first entry →
-    dealer reset; sort out the FCC license/MMSI first. Nava's VHF is a
+    dealer reset; sort out the FCC license/MMSI first. **Confirmed on the boat
+    2026-10-25:** NAIS-500 (Simrad, S/N 1905L10290, sw V1.2.8.01) Configure page
+    only has Silent + Instance — no MMSI/name fields (locked); Vulcan Settings →
+    Vessels MMSI = 368120680 is the plotter's own-boat filter, not the
+    transponder's programming. Rename = dealer job. Nava's VHF is a
     **Standard Horizon GX2150 Matrix AIS+** (AIS *receive-only*); on 2026-10-25
     it showed "POS Data is over 4 Hours" (no position → DSC distress would lack
     a position) — told Kevin to check its position link. If Nava's MMSI changes,
