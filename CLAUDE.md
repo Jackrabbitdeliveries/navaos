@@ -418,6 +418,12 @@ metric = (8–16 kHz energy) − (0.3–3 kHz energy):
 (No GitHub issues exist yet — the deploy key can't use the issues API. Track
 here until issues are set up.)
 
+- **Boat ID ("guess, then reveal") — PLAN ONLY, awaiting Kevin's review:**
+  `docs/boat-id-plan.md` (2026-10-25). No code written. Key finding: with
+  today's timeshared AIS, a moving-boat AIS reveal would work only ~3–10% of
+  daytime moments (AIS never runs while someone listens) → recommends a 2nd
+  RTL-SDR for AIS. Decisions D1–D9 and experiments E2–E5 listed there.
+
 - **Monitor all channels at once:** 09/13/16/68/71 span only 156.425–156.800
   MHz, so one ~1 MS/s IQ capture holds all five — demod + record every
   channel simultaneously, no scanning gaps. Main cost: CPU (channelizer).
