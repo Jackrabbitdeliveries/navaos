@@ -21,7 +21,7 @@
     .title { font-size: 22px; font-weight: 800; letter-spacing: 0.04em; }
     .title .place { display: block; font-size: 11px; font-weight: 700; letter-spacing: 0.2em; color: var(--cyan); margin-bottom: 4px; }
     .title small { display: block; font-style: italic; font-size: 13px; font-weight: 500; color: #b9c8da; margin-top: 3px; }
-    .back { color: var(--cyan); text-decoration: none; font-size: 14px; font-weight: 600; padding: 6px 10px; border: 1px solid var(--line); border-radius: 999px; }
+    .back { color: var(--cyan); text-decoration: none; font-size: 14px; font-weight: 600; padding: 6px 10px; border: 1px solid var(--line); border-radius: 999px; white-space: nowrap; }
 
     .card { background: linear-gradient(160deg, var(--panel-2), var(--panel)); border: 1px solid var(--line); border-radius: 14px; padding: 14px; margin-top: 12px; }
     .card[hidden], [hidden] { display: none !important; }
@@ -84,6 +84,27 @@
     .why { font-size: 13px; color: #c9d6e6; margin-top: 3px; line-height: 1.4; }
     .namecard { font-size: 15px; margin-top: 10px; }
     .namecard b { color: var(--amber); }
+    .track { display: flex; overflow-x: auto; scroll-snap-type: x mandatory; gap: 12px; scrollbar-width: none; -webkit-overflow-scrolling: touch; }
+    .track::-webkit-scrollbar { display: none; }
+    .slide { flex: 0 0 100%; scroll-snap-align: start; min-width: 0; }
+    .s-nav { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+    .navbtn { font: inherit; font-size: 22px; line-height: 1; width: 40px; height: 34px; border-radius: 10px; border: 1px solid var(--line); background: var(--panel); color: var(--cyan); cursor: pointer; }
+    .counter { font-family: var(--mono); font-size: 13px; color: var(--muted); }
+    .s-head { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; margin-bottom: 8px; }
+    .s-head b { font-size: 17px; }
+    .ref { position: relative; border-radius: 10px; overflow: hidden; background: #000; border: 1px solid var(--line); }
+    .ref img { display: block; width: 100%; height: 230px; object-fit: cover; cursor: pointer; }
+    .ref-empty { height: 120px; display: flex; align-items: center; justify-content: center; color: var(--muted); font-size: 14px; background: var(--panel); }
+    .ref-cap { font-size: 11px; color: var(--muted); padding: 5px 8px; background: rgba(7,17,31,0.9); }
+    .ref-cap a { color: var(--cyan); text-decoration: none; }
+    .slide .why { margin: 8px 0 10px; }
+    .spacer { height: 10px; }
+    .noneform { margin-top: 10px; display: flex; flex-direction: column; gap: 8px; }
+    .noneform input[type=text] { width: 100%; }
+    .noneform input:disabled { opacity: 0.4; }
+    .chk { font-size: 14px; color: #c9d6e6; display: flex; align-items: center; gap: 8px; }
+    .confirmed { text-align: center; padding: 6px 0; }
+    .conf-name { font-size: 22px; font-weight: 800; color: var(--green); margin: 4px 0 6px; }
     .small { font-size: 12px; color: var(--muted); line-height: 1.5; }
     .err { color: var(--red); font-size: 14px; margin-top: 8px; }
   </style>
@@ -92,7 +113,7 @@
   <div class="wrap">
     <div class="top">
       <div class="title"><span class="place">ST. AUGUSTINE, FL</span>Boat ID<small>Sailboats · guess, then reveal</small></div>
-      <div style="display:flex;gap:6px"><a class="back" href="/boats/log">My boat IDs</a><a class="back" href="/radio/player">← Player</a></div>
+      <div style="display:flex;gap:6px;flex:none"><a class="back" href="/boats/log">My IDs</a><a class="back" href="/radio/player">← Player</a></div>
     </div>
 
     <!-- 1. start -->
@@ -379,13 +400,18 @@
       const you = el("td", null, LABEL[g[gk]] || "Not sure"); you.appendChild(el("span", "m " + cls, sym)); tr.appendChild(you);
       tr.appendChild(el("td", null, (LABEL[ai[ak]] || ai[ak]) + (ak === "size_class" && ai.length_ft_estimate ? " (~" + ai.length_ft_estimate + " ft)" : "")));
     }
-    if (g.model) {
+    const conf = d.confirm, pts_ = conf && conf.points;
+    if (g.model || (conf && !conf.model_unknown)) {
       const tr = tbl.insertRow(); tr.appendChild(el("td", "f", "MODEL"));
-      tr.appendChild(el("td", null, g.model));
+      const you = el("td", null, g.model || "–");
+      if (g.model && pts_ && pts_.you != null) { you.appendChild(el("span", "m " + (pts_.you ? "yes" : "no"), pts_.you ? "✓" : "✗")); tried++; if (pts_.you) pts++; }
+      tr.appendChild(you);
       const top = (ai.candidates || [])[0];
-      tr.appendChild(el("td", null, top ? top.make + " " + top.model : "no guess"));
+      const aiCell = el("td", null, top ? top.make + " " + top.model : "no guess");
+      if (pts_ && !conf.model_unknown) aiCell.appendChild(el("span", "m " + (pts_.ai_rank === 1 ? "yes" : "no"), pts_.ai_rank ? (pts_.ai_rank === 1 ? "✓" : "#" + pts_.ai_rank) : "✗"));
+      tr.appendChild(aiCell);
     }
-    card.append(el("h2", null, "YOU VS THE AI"));
+    card.append(el("h2", null, conf && !conf.model_unknown ? "YOU VS THE AI · CONFIRMED" : "YOU VS THE AI"));
     card.appendChild(el("div", "score", tried ? pts + " / " + tried : "–"));
     card.appendChild(el("div", "small", tried ? "fields where you and the AI agree (the AI can be wrong too - the AIS reveal comes later)" : "make a guess next time to score"));
     card.appendChild(tbl);
@@ -394,17 +420,7 @@
     if (ai.features && ai.features.length) { const f = el("div", "feat"); for (const t of ai.features) f.appendChild(el("span", null, t)); card.appendChild(f); }
     box.appendChild(card);
 
-    const cc = el("div", "card");
-    cc.appendChild(el("h2", null, "AI MAKE / MODEL CANDIDATES"));
-    if (!ai.candidates || !ai.candidates.length) cc.appendChild(el("div", "small", "No confident make/model guess from this photo."));
-    for (const c of ai.candidates || []) {
-      const row = el("div", "cand");
-      const t = el("div"); t.appendChild(el("b", null, c.make + " " + c.model)); t.appendChild(el("span", "conf " + c.confidence, c.confidence.toUpperCase()));
-      row.append(t, el("div", "why", c.why));
-      cc.appendChild(row);
-    }
-    if (ai.notes) cc.appendChild(el("p", "small", "Note: " + ai.notes));
-    box.appendChild(cc);
+    box.appendChild(buildCompare(d));
 
     const sc = el("div", "card");
     sc.appendChild(el("h2", null, "CAPTURED WITH THE PHOTO"));
@@ -418,6 +434,155 @@
     if (d.ai_meta) lines.push(`${d.ai_meta.model} · ${d.ai_meta.seconds} s · ${d.ai_meta.input_tokens + d.ai_meta.output_tokens} tokens`);
     for (const l of lines) sc.appendChild(el("div", "small", l));
     box.appendChild(sc);
+  }
+
+  // ---------- comparison: "which is it?" ----------
+  function norm(t) { return (t || "").toLowerCase().replace(/[^a-z0-9 ]+/g, " ").replace(/\s+/g, " ").trim(); }
+
+  function slidesFor(d) {
+    const ai = d.ai || {}, g = d.guess || {};
+    const out = (ai.candidates || []).map((c, i) => ({ kind: "candidate", index: i, make: c.make, model: c.model,
+      confidence: c.confidence, why: c.why, hull: ai.hull, rig: ai.rig, size: ai.size_class }));
+    if (g.model) {
+      const gm = norm(g.model);
+      const listed = out.some(c => norm(c.make + " " + c.model).includes(gm) || gm.includes(norm(c.make + " " + c.model)));
+      if (!listed) {
+        const parts = g.model.trim().split(/\s+/);
+        out.push({ kind: "own", make: parts[0], model: parts.slice(1).join(" "), why: "Your guess", hull: g.hull, rig: g.rig, size: g.size });
+      }
+    }
+    return out;
+  }
+
+  function refViewer(slide, sightingId) {
+    const wrap = el("div", "ref");
+    const img = el("img"); img.alt = ""; img.referrerPolicy = "no-referrer"; img.loading = "lazy";
+    const cap = el("div", "ref-cap", "Looking for reference photos…");
+    const empty = el("div", "ref-empty", "");
+    wrap.append(img, empty, cap);
+    img.hidden = true;
+    let refs = [], i = 0;
+    function show() {
+      if (!refs.length) {
+        img.hidden = true; empty.hidden = false;
+        empty.textContent = "No reference photo yet";
+        cap.textContent = "Confirm this one and your photo becomes the first.";
+        return;
+      }
+      const r = refs[i];
+      img.hidden = false; empty.hidden = true; img.src = r.url;
+      cap.replaceChildren();
+      cap.append((refs.length > 1 ? `${i + 1}/${refs.length} · ` : ""));
+      if (r.source === "own") cap.append(r.label);
+      else {
+        const a = el("a", null, r.artist + " · " + r.license); a.href = r.page; a.target = "_blank"; a.rel = "noopener";
+        cap.append(a, " · Wikimedia Commons");
+      }
+      if (refs.length > 1) cap.append(" · tap photo for next");
+    }
+    img.onclick = () => { if (refs.length > 1) { i = (i + 1) % refs.length; show(); } };
+    const q = "/boats/references?make=" + encodeURIComponent(slide.make || "") + "&model=" + encodeURIComponent(slide.model || "") + "&exclude=" + encodeURIComponent(sightingId);
+    fetch(q).then(r => r.json()).then(list => { refs = Array.isArray(list) ? list : []; show(); }).catch(() => { refs = []; show(); });
+    return wrap;
+  }
+
+  async function sendConfirm(id, body) {
+    const res = await fetch("/boats/sightings/" + id + "/confirm", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }).catch(() => null);
+    const d = res ? await res.json().catch(() => null) : null;
+    if (!res || !res.ok) { alert((d && d.detail) || "Couldn't save - try again."); return; }
+    renderResult(d);
+    const c = document.querySelector(".confirmed"); if (c) c.scrollIntoView({ block: "center", behavior: "smooth" });
+  }
+
+  function buildCompare(d) {
+    const card = el("div", "card compare");
+    const conf = d.confirm;
+    const body = el("div");
+    if (conf) {
+      const done = el("div", "confirmed");
+      done.append(el("div", "small", "CONFIRMED"),
+        el("div", "conf-name", conf.model_unknown ? "Make/model unknown" : (conf.make + " " + conf.model).trim()));
+      const p = conf.points || {};
+      const bits = [];
+      if (!conf.model_unknown) {
+        if (p.you === true) bits.push("✓ You got the model");
+        else if (p.you === false) bits.push("✗ Your model guess was different");
+        bits.push(p.ai_rank ? (p.ai_rank === 1 ? "✓ AI's first guess" : `AI had it at #${p.ai_rank}`) : "✗ Not in the AI's list");
+      }
+      bits.push([LABEL[conf.hull], LABEL[conf.rig], LABEL[conf.size]].filter(x => x && x !== "Not sure").join(" · "));
+      done.appendChild(el("div", "small", bits.filter(Boolean).join("  ·  ")));
+      const ch = el("button", "linkbtn", "Change");
+      ch.onclick = () => { card.replaceWith(buildCompare({ ...d, confirm: null, _changing: conf })); };
+      done.appendChild(ch);
+      card.appendChild(done);
+      return card;
+    }
+    const slides = slidesFor(d);
+    card.appendChild(el("h2", null, slides.length ? "WHICH IS IT?  ·  SWIPE TO COMPARE" : "WHICH IS IT?"));
+    if (slides.length) {
+      const track = el("div", "track");
+      const counter = el("div", "counter", "");
+      slides.forEach((sl, n) => {
+        const slide = el("div", "slide");
+        const head = el("div", "s-head");
+        head.appendChild(el("b", null, (sl.make + " " + sl.model).trim()));
+        if (sl.confidence) head.appendChild(el("span", "conf " + sl.confidence, sl.confidence.toUpperCase()));
+        if (sl.kind === "own") head.appendChild(el("span", "conf medium", "YOUR GUESS"));
+        slide.append(head, refViewer(sl, d.id), el("div", "why", sl.why));
+        const ok = el("button", "btn primary", "That's it ✓");
+        ok.onclick = () => sendConfirm(d.id, { choice: sl.kind === "own" ? "own" : "candidate", candidate_index: sl.index ?? null,
+          make: sl.make, model: sl.model, hull: sl.hull || "unknown", rig: sl.rig || "unknown", size: sl.size || "unknown" });
+        slide.appendChild(ok);
+        track.appendChild(slide);
+      });
+      const nav = el("div", "s-nav");
+      const prev = el("button", "navbtn", "‹"), next = el("button", "navbtn", "›");
+      const go = dir => track.scrollBy({ left: dir * track.clientWidth, behavior: "smooth" });
+      prev.onclick = () => go(-1); next.onclick = () => go(1);
+      const upd = () => { const k = Math.round(track.scrollLeft / Math.max(1, track.clientWidth)); counter.textContent = `${k + 1} of ${slides.length}`; };
+      track.addEventListener("scroll", () => requestAnimationFrame(upd));
+      nav.append(prev, counter, next);
+      card.append(nav, track);
+      setTimeout(upd, 0);
+    } else {
+      card.appendChild(el("div", "small", "The AI had no make/model guess for this photo."));
+    }
+    // none of these
+    const noneBtn = el("button", "btn", "None of these");
+    const form = noneForm(d);
+    form.hidden = true;
+    noneBtn.onclick = () => { form.hidden = !form.hidden; noneBtn.hidden = true; };
+    if (d._changing && d._changing.choice !== "candidate") { form.hidden = false; noneBtn.hidden = true; }
+    card.append(el("div", "spacer"), noneBtn, form);
+    if (d.ai && d.ai.notes) card.appendChild(el("p", "small", "AI note: " + d.ai.notes));
+    return card;
+  }
+
+  function noneForm(d) {
+    const ai = d.ai || {}, prev = d._changing || {};
+    const f = el("div", "noneform");
+    const st = { hull: prev.hull || ai.hull || "unknown", rig: prev.rig || ai.rig || "unknown", size: prev.size || ai.size_class || "unknown" };
+    const mk = el("input"); mk.type = "text"; mk.placeholder = "Make, e.g. Catalina"; mk.maxLength = 60; mk.value = prev.make || "";
+    const md = el("input"); md.type = "text"; md.placeholder = "Model, e.g. 30"; md.maxLength = 80; md.value = prev.model || ""; md.setAttribute("list", "knownModels");
+    const dl = el("datalist"); dl.id = "knownModels";
+    fetch("/boats/models").then(r => r.json()).then(list => { for (const m of list) { const o = el("option"); o.value = m; dl.appendChild(o); } }).catch(() => {});
+    const unk = el("label", "chk"); const cb = el("input"); cb.type = "checkbox"; cb.checked = !!prev.model_unknown;
+    unk.append(cb, " I don't know the make/model");
+    const sync = () => { mk.disabled = md.disabled = cb.checked; };
+    cb.onchange = sync; sync();
+    const chipRow = (label, values, key) => {
+      const q = el("div", "q"); q.appendChild(el("label", null, label));
+      const box = el("div", "chips");
+      const draw = () => { box.replaceChildren(); for (const v of values) { const b = el("button", "chip" + (st[key] === v ? " on" : ""), LABEL[v] || v); b.onclick = () => { st[key] = v; draw(); }; box.appendChild(b); } };
+      draw(); q.appendChild(box); return q;
+    };
+    const save = el("button", "btn primary", "Save");
+    save.onclick = () => sendConfirm(d.id, cb.checked
+      ? { choice: "model_unknown", hull: st.hull, rig: st.rig, size: st.size }
+      : { choice: "typed", make: mk.value.trim(), model: md.value.trim(), hull: st.hull, rig: st.rig, size: st.size });
+    f.append(el("h2", null, "WHAT IS IT?"), mk, md, dl, unk,
+      chipRow("HULL", HULLS, "hull"), chipRow("RIG", RIGS, "rig"), chipRow("SIZE", SIZES, "size"), save);
+    return f;
   }
 
   function again() { clearInterval(pollTimer); shot = null; try { history.replaceState(null, "", location.pathname); } catch (e) {} show("stStart"); }

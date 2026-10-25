@@ -219,7 +219,24 @@ Legacy path (`ChannelConfig.receiver="rtl_fm"`): rtl_fm → AdaptiveSquelch
     tap → `/boats/snap#<id>` reopens the result. Player's "Boat ID" tool links
     here. iPhone note: a playing `<video>` hid the HUD overlay → HUD/shutter
     z-indexed above it and readouts repeated below the camera.
-  - Not built yet: piece 2 comparison screen/confirm, piece 3 AIS reveal
+  - **Piece 2 (2026-10-25): comparison + confirm.** `library.py`: reference
+    photos = the user's own confirmed sightings of that make/model, then
+    freely licensed **Wikimedia Commons** photos via the official API (license
+    allow-list CC0 / PD / CC BY[-SA]; hot-linked from upload./thumb.wikimedia.org
+    with photographer + license shown, never downloaded; User-Agent set; cache
+    `~/navaos-data/boatid/commons_cache.json`, 30 days; query full make + model
+    number, falls back to first make word; titles must contain make word and
+    model number). Fuzzy model match `same_model()` (same make word and same
+    model number or ≥0.8 similar). Routes: `GET /boats/references?make=&model=&exclude=`,
+    `GET /boats/models` (autocomplete), `POST /boats/sightings/{id}/confirm`
+    {choice candidate|own|typed|model_unknown, candidate_index, make, model,
+    hull, rig, size} → `confirm` JSON incl. `points` {you: bool|null, ai_rank}.
+    Result screen: "Which is it?" scroll-snap carousel (AI candidates + your
+    own guess if not listed), tap photo for next reference, "That's it ✓",
+    "None of these" form (make/model with autocomplete, "don't know", hull/
+    rig/size chips), confirmed card with Change; model row joins the score.
+    Log page shows the confirmed name ✓ and counts the model point.
+  - Not built yet: piece 3 AIS reveal
     (snap-triggered AIS burst; `visible_name` ↔ AIS names), piece 4 scoring log.
   - `.gitignore` now ignores *.jpg/*.jpeg/*.png/*.heic/*.webp everywhere
     (safety net — the repo is public).

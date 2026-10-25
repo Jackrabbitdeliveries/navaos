@@ -18,7 +18,7 @@ from fastapi import APIRouter, HTTPException
 from fastapi.responses import FileResponse, HTMLResponse
 from pydantic import BaseModel
 
-from navaos_boatid import identify, store
+from navaos_boatid import identify, library, store
 
 router = APIRouter(prefix="/boats", tags=["boat-id"])
 
@@ -112,6 +112,71 @@ def get_sighting(sid: str):
 @router.get("/sightings")
 def list_sightings(limit: int = 50):
     return [_public(r) for r in store.recent(min(max(limit, 1), 500))]
+
+
+@router.get("/references")
+def references(make: str, model: str = "", exclude: str | None = None):
+    """Reference photos for one make/model: your own confirmed photos first,
+    then freely licensed Wikimedia Commons photos (with credit)."""
+    return library.references(make[:80], model[:80], exclude if exclude and store.valid_id(exclude) else None)
+
+
+@router.get("/models")
+def models():
+    """Make/model names already confirmed - for autocomplete."""
+    return library.known_models()
+
+
+class Confirm(BaseModel):
+    choice: str                     # candidate | own | typed | model_unknown
+    candidate_index: int | None = None
+    make: str = ""
+    model: str = ""
+    hull: str = "unknown"
+    rig: str = "unknown"
+    size: str = "unknown"
+
+
+def _model_points(row: dict, conf: dict) -> dict:
+    """Did you / the AI get the confirmed make+model?"""
+    if conf.get("model_unknown"):
+        return {"you": None, "ai_rank": None}
+    g = (row.get("guess") or {}).get("model", "")
+    you = None
+    if g:
+        parts = g.split(None, 1)
+        you = library.same_model(parts[0], parts[1] if len(parts) > 1 else "", conf["make"], conf["model"]) \
+            or library.norm(g) == library.norm(f"{conf['make']} {conf['model']}")
+    rank = None
+    for i, c in enumerate((row.get("ai") or {}).get("candidates") or []):
+        if library.same_model(c.get("make", ""), c.get("model", ""), conf["make"], conf["model"]):
+            rank = i + 1
+            break
+    return {"you": you, "ai_rank": rank}
+
+
+@router.post("/sightings/{sid}/confirm")
+def confirm(sid: str, req: Confirm):
+    row = store.get(sid)
+    if row is None:
+        raise HTTPException(404, "No such sighting")
+    if req.choice not in ("candidate", "own", "typed", "model_unknown"):
+        raise HTTPException(400, "Unknown choice.")
+    make, model = req.make.strip()[:60], req.model.strip()[:80]
+    if req.choice != "model_unknown" and not make:
+        raise HTTPException(400, "Please give at least the make (e.g. Catalina).")
+    conf = {
+        "choice": req.choice, "candidate_index": req.candidate_index,
+        "make": make if req.choice != "model_unknown" else "", "model": model if req.choice != "model_unknown" else "",
+        "model_unknown": req.choice == "model_unknown",
+        "hull": req.hull if req.hull in identify.HULLS else "unknown",
+        "rig": req.rig if req.rig in identify.RIGS else "unknown",
+        "size": req.size if req.size in identify.SIZES else "unknown",
+        "at": time.time(),
+    }
+    conf["points"] = _model_points(row, conf)
+    store.update(sid, confirm=conf)
+    return _public(store.get(sid))
 
 
 @router.get("/photo/{sid}.jpg")
