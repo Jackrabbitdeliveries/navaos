@@ -47,6 +47,8 @@
                border: 4px solid #fff; background: rgba(255,255,255,0.25); cursor: pointer; }
     .readout-row { display: flex; justify-content: space-between; gap: 8px; margin-top: 8px; font-family: var(--mono); font-size: 15px; font-weight: 700; }
     .readout-row .ok { color: var(--green); } .readout-row .meh { color: var(--amber); } .readout-row .bad { color: var(--red); }
+    .credit-line { font-size: 12px; color: var(--muted); margin: 6px 2px 0; }
+    .credit-line a { color: var(--cyan); text-decoration: none; }
     .marker { position: absolute; width: 34px; height: 34px; margin: -17px 0 0 -17px; border: 3px solid var(--amber); border-radius: 50%;
               box-shadow: 0 0 0 2px rgba(0,0,0,0.6); pointer-events: none; }
     .tap-hint { position: absolute; left: 0; right: 0; bottom: 10px; text-align: center; pointer-events: none; }
@@ -173,6 +175,7 @@
     <!-- 4. thinking / result -->
     <div id="stResult" hidden>
       <div class="viewer"><img id="resShot" alt="Your photo"><div id="resMarker" class="marker" hidden></div></div>
+      <div class="credit-line" id="resCredit" hidden></div>
       <div id="thinking" class="card thinking"><div class="spin"></div>Claude Opus 5 is looking at your boat…<div class="small" style="margin-top:6px">usually 5–20 seconds</div></div>
       <div id="result" hidden></div>
       <div class="row"><button class="btn primary" onclick="again()">Snap another</button></div>
@@ -403,8 +406,20 @@
     return user === ai ? ["yes", "✓"] : ["no", "✗"];
   }
 
+  function renderCredit(d) {
+    // Images from a live camera feed always carry that feed's credit (agreed with the camera owners).
+    const c = $("resCredit");
+    c.replaceChildren();
+    c.hidden = !d.feed;
+    if (!d.feed) return;
+    c.append("📹 Image: ");
+    const a = el("a", null, d.feed.credit); a.href = d.feed.credit_url; a.target = "_blank"; a.rel = "noopener";
+    c.append(a, " · " + d.feed.name + (d.feed.city ? ", " + d.feed.city : ""));
+  }
+
   function renderResult(d) {
     $("thinking").hidden = true;
+    renderCredit(d);
     if (d.tap_x != null && d.tap_y != null) {   // also restores the marker when reopened from a link
       const m = $("resMarker"); m.style.left = (d.tap_x * 100) + "%"; m.style.top = (d.tap_y * 100) + "%"; m.hidden = false;
     }

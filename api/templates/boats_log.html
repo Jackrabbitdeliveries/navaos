@@ -113,6 +113,7 @@
       const g = s.guess || {};
       const yours = [g.model, LABEL[g.rig] !== "?" ? LABEL[g.rig] : null, LABEL[g.size] !== "?" ? LABEL[g.size] : null].filter(Boolean).join(", ");
       main.append(what, el("div", "sub", t + (yours ? " · you said: " + yours : "") + (s.source === "upload" ? " · uploaded" : "")));
+      if (s.feed) main.appendChild(el("div", "sub", "📹 " + s.feed.credit + " · " + s.feed.name));
       const sco = el("div", "score " + (!sc || !sc.tried ? "none" : sc.pts === sc.tried ? "full" : "part"), sc && sc.tried ? sc.pts + "/" + sc.tried : "–");
       sco.appendChild(el("small", null, "SCORE"));
       a.append(img, main, sco);

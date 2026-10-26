@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import base64
 import json
+import os
 import threading
 import time
 from pathlib import Path
@@ -24,6 +25,9 @@ import anthropic
 from . import store
 
 MODEL = "claude-opus-5"
+# Tests and spare dev instances MUST set NAVAOS_BOATID_AI=0: the key file is
+# global, so otherwise every test sighting is a real, billed API call.
+AI_ENABLED = os.environ.get("NAVAOS_BOATID_AI", "1") != "0"
 KEY_FILE = Path.home() / "navaos-data" / "anthropic_api_key"
 
 HULLS = ["monohull", "catamaran", "trimaran", "unknown"]
@@ -142,4 +146,7 @@ def run(sid: str) -> None:
 
 
 def start(sid: str) -> None:
+    if not AI_ENABLED:
+        store.update(sid, ai_status="error", ai_error="AI disabled (NAVAOS_BOATID_AI=0).")
+        return
     threading.Thread(target=run, args=(sid,), daemon=True, name=f"boatid-{sid}").start()

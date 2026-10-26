@@ -19,7 +19,7 @@ from fastapi.responses import FileResponse, HTMLResponse
 from pydantic import BaseModel
 
 from api.nav import with_nav
-from navaos_boatid import identify, library, reveal, store
+from navaos_boatid import feeds, identify, library, reveal, store
 
 router = APIRouter(prefix="/boats", tags=["boat-id"])
 
@@ -47,7 +47,8 @@ def log_page():
 
 class NewSighting(BaseModel):
     image: str                      # data:image/jpeg;base64,...
-    source: str = "phone"           # phone | upload
+    source: str = "phone"           # phone | upload | feed
+    feed_id: str | None = None      # when source = feed
     client: str | None = None
     taken_at: float | None = None   # epoch seconds from the phone
     img_w: int | None = None
@@ -71,8 +72,10 @@ def create_sighting(req: NewSighting):
         raise HTTPException(413, "Photo is too large.")
     if not jpeg.startswith(b"\xff\xd8"):
         raise HTTPException(400, "Photo must be a JPEG.")
-    if req.source not in ("phone", "upload"):
+    if req.source not in ("phone", "upload", "feed"):
         raise HTTPException(400, "Unknown source.")
+    if req.source == "feed" and (not req.feed_id or feeds.get(req.feed_id) is None):
+        raise HTTPException(400, "Unknown feed.")
 
     guess = {}
     for k, allowed in GUESS_FIELDS.items():
@@ -91,6 +94,7 @@ def create_sighting(req: NewSighting):
         "img_w": req.img_w, "img_h": req.img_h,
         "tap_x": clamp01(req.tap_x), "tap_y": clamp01(req.tap_y),
         "sensors": req.sensors, "guess": guess, "ai_status": "pending",
+        "feed_id": req.feed_id if req.source == "feed" else None,
     })
     identify.start(sid)
     reveal.start(sid)
@@ -99,8 +103,10 @@ def create_sighting(req: NewSighting):
 
 def _public(row: dict) -> dict:
     """What the page needs - no client id, no file path."""
-    return {k: row.get(k) for k in ("id", "created_at", "source", "taken_at", "img_w", "img_h", "tap_x", "tap_y",
-                                    "sensors", "guess", "ai_status", "ai", "ai_meta", "ai_error", "confirm", "ais")}
+    d = {k: row.get(k) for k in ("id", "created_at", "source", "taken_at", "img_w", "img_h", "tap_x", "tap_y",
+                                 "sensors", "guess", "ai_status", "ai", "ai_meta", "ai_error", "confirm", "ais")}
+    d["feed"] = feeds.public(row["feed_id"]) if row.get("feed_id") else None   # incl. the credit to show
+    return d
 
 
 @router.get("/sightings/{sid}")
@@ -109,6 +115,12 @@ def get_sighting(sid: str):
     if row is None:
         raise HTTPException(404, "No such sighting")
     return _public(row)
+
+
+@router.get("/feeds")
+def list_feeds():
+    """Live camera feeds (public fields only), each with its credit."""
+    return [feeds.public(fid) for fid in feeds.all_feeds()]
 
 
 @router.get("/sightings")

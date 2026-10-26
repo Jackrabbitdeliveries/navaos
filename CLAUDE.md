@@ -292,6 +292,21 @@ Legacy path (`ChannelConfig.receiver="rtl_fm"`): rtl_fm → AdaptiveSquelch
     with only SAIFIR (19 m away) in view — SAIFIR is Nava itself; Kevin was on
     Nava's dock photographing a neighbour that isn't on AIS → correct answer
     "none" (which it now returns).
+  - **Live camera feeds (2026-10-26):** `navaos_boatid/feeds.py` registry — one
+    entry per camera (built-in `bridge-of-lions`: YouTube `uLJBad4vSno`, city,
+    credit "See St. Augustine" → https://www.youtube.com/@seestaug, permission
+    note; later lat/lon/bearing_deg/fov_deg). Overrides/additions in
+    `~/navaos-data/feeds.json` (Pi only — may later hold private camera URLs;
+    `public()` never exposes them). The Bridge page's video id/credit come from
+    it (`/radio/bridge/config`; old `bridge_cam.json` still honoured).
+    Sightings: `source` phone|upload|**feed** + `feed_id` column (auto-added to
+    older DBs); API returns `feed` (with credit); `GET /boats/feeds`. Result
+    screen + log show "📹 Image: See St. Augustine · Bridge of Lions live cam".
+    **More cities = more registry entries.** Frame capture itself not built
+    yet (awaiting: YouTube vs. direct camera feed, camera position/direction).
+  - ⚠️ **Tests / spare instances: also set `NAVAOS_BOATID_AI=0`** (the API key is
+    global; without it every test sighting is a real, billed Opus call — this
+    happened twice on 2026-10-25/26, ~4¢ each).
   - Not built yet: piece 3 AIS reveal
     (snap-triggered AIS burst; `visible_name` ↔ AIS names), piece 4 scoring log.
   - `.gitignore` now ignores *.jpg/*.jpeg/*.png/*.heic/*.webp everywhere

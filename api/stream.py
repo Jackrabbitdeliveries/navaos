@@ -12,6 +12,7 @@ from navaos_audio.channel_manager import channel_manager, SessionConflictError
 from navaos_audio.control import ControlError, control
 from navaos_audio import noise_meter as nm
 from navaos_audio.ais import ais_service
+from navaos_boatid import feeds
 from navaos_audio.recorder import last_heard, list_recordings, mark_listened, resolve_recording
 
 _TEMPLATES = Path(__file__).parent / "templates"
@@ -354,17 +355,14 @@ def ais_now(client: str | None = None, x_override_pin: str | None = Header(defau
 # the latest ch 09 transcripts. The video id is a setting because live streams
 # get a new id when they restart.
 
-_BRIDGE_CFG = Path.home() / "navaos-data" / "bridge_cam.json"
-_BRIDGE_DEFAULT = {"video_id": "uLJBad4vSno", "credit": "See St. Augustine",
-                   "credit_url": "https://www.youtube.com/@seestaug"}
 _YT_ID_RE = re.compile(r"(?:v=|youtu\.be/|/live/|/embed/)?([A-Za-z0-9_-]{11})(?:[?&#]|$)")
 
 
 def _bridge_cfg() -> dict:
-    try:
-        return {**_BRIDGE_DEFAULT, **json.loads(_BRIDGE_CFG.read_text())}
-    except (OSError, ValueError):
-        return dict(_BRIDGE_DEFAULT)
+    """The Bridge page's camera = the default feed in the feed registry
+    (navaos_boatid/feeds.py), incl. its credit."""
+    f = feeds.public(feeds.DEFAULT_FEED) or {}
+    return {**f, "video_id": f.get("youtube_id")}
 
 
 @router.get("/bridge/config")
@@ -383,10 +381,8 @@ def set_bridge_config(req: BridgeConfig, client: str | None = None,
     m = _YT_ID_RE.search(req.video.strip())
     if not m:
         raise HTTPException(400, "That doesn't look like a YouTube link or video id.")
-    cfg = {**_bridge_cfg(), "video_id": m.group(1)}
-    _BRIDGE_CFG.parent.mkdir(parents=True, exist_ok=True)
-    _BRIDGE_CFG.write_text(json.dumps(cfg))
-    return cfg
+    feeds.set_field(feeds.DEFAULT_FEED, youtube_id=m.group(1))
+    return _bridge_cfg()
 
 
 @router.get("/bridge/view")

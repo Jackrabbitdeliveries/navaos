@@ -35,7 +35,7 @@ CREATE TABLE IF NOT EXISTS sightings (
     created_at  REAL NOT NULL,
     kit_id      TEXT NOT NULL,
     client      TEXT,
-    source      TEXT NOT NULL,          -- phone | upload | (later) fixed-camera
+    source      TEXT NOT NULL,          -- phone | upload | feed (a live camera, see feed_id)
     taken_at    REAL,                   -- epoch s, from the phone at the shutter
     photo       TEXT NOT NULL,          -- path relative to DATA_DIR
     img_w       INTEGER, img_h INTEGER,
@@ -47,7 +47,8 @@ CREATE TABLE IF NOT EXISTS sightings (
     ai_meta     TEXT,                   -- JSON: model, tokens, request id, seconds
     ai_error    TEXT,
     confirm     TEXT,                   -- JSON (piece 2)
-    ais         TEXT                    -- JSON (piece 3)
+    ais         TEXT,                   -- JSON (piece 3)
+    feed_id     TEXT                    -- navaos_boatid.feeds id when source = feed
 );
 CREATE INDEX IF NOT EXISTS sightings_created ON sightings(created_at);
 """
@@ -67,6 +68,9 @@ def _conn() -> sqlite3.Connection:
     c = sqlite3.connect(DB_FILE, timeout=10)
     c.row_factory = sqlite3.Row
     c.executescript(SCHEMA)
+    cols = {r[1] for r in c.execute("PRAGMA table_info(sightings)")}
+    if "feed_id" not in cols:   # databases created before 2026-10-26
+        c.execute("ALTER TABLE sightings ADD COLUMN feed_id TEXT")
     return c
 
 
