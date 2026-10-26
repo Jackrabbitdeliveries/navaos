@@ -95,10 +95,11 @@
     .s-head { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; margin-bottom: 8px; }
     .s-head b { font-size: 17px; }
     .ref { position: relative; border-radius: 10px; overflow: hidden; background: #000; border: 1px solid var(--line); }
-    .ref img { display: block; width: 100%; height: 230px; object-fit: cover; cursor: pointer; }
+    .ref img { display: block; width: 100%; height: 260px; object-fit: contain; background: #000; cursor: pointer; }   /* whole photo: hull + rig */
     .ref-empty { height: 120px; display: flex; align-items: center; justify-content: center; color: var(--muted); font-size: 14px; background: var(--panel); }
     .ref-cap { font-size: 11px; color: var(--muted); padding: 5px 8px; background: rgba(7,17,31,0.9); }
     .ref-cap a { color: var(--cyan); text-decoration: none; }
+    .ref-cap .samebuilder { color: var(--amber); }
     .slide .why { margin: 8px 0 10px; }
     .spacer { height: 10px; }
     .noneform { margin-top: 10px; display: flex; flex-direction: column; gap: 8px; }
@@ -107,6 +108,7 @@
     .chk { font-size: 14px; color: #c9d6e6; display: flex; align-items: center; gap: 8px; }
     .confirmed { text-align: center; padding: 6px 0; }
     .conf-name { font-size: 22px; font-weight: 800; color: var(--green); margin: 4px 0 6px; }
+    .conf-name.muted { color: var(--muted); }
     .ais-lead { font-size: 14px; color: #c9d6e6; margin-top: 2px; }
     .ais-big { font-size: 24px; font-weight: 800; color: var(--amber); margin: 4px 0; }
     .ais-big.muted { color: var(--muted); }
@@ -173,7 +175,8 @@
         <div class="q"><label>RIG</label><div class="chips" id="gRig"></div></div>
         <div class="q"><label>SIZE</label><div class="chips" id="gSize"></div></div>
         <div class="q"><label>MAKE / MODEL (OPTIONAL)</label><input type="text" id="gModel" placeholder="e.g. Catalina 30" maxlength="80" autocomplete="off"></div>
-        <div class="row"><button class="btn" onclick="retake()">Retake</button><button class="btn primary" id="goBtn" onclick="submit()">Reveal the AI's guess</button></div>
+        <div class="row"><button class="btn" id="retakeBtn" onclick="retake()">Retake</button><button class="btn" onclick="cancelShot()">Cancel</button></div>
+        <div class="row"><button class="btn primary" id="goBtn" onclick="submit()">Reveal the AI's guess</button></div>
         <div id="submitErr" class="err"></div>
       </div>
     </div>
@@ -352,6 +355,7 @@
   }
   function openGuess() {
     tap = null; guess = { hull: null, rig: null, size: null };
+    $("retakeBtn").textContent = shot.source === "feed" ? "↻ Grab again" : shot.source === "upload" ? "Pick another" : "Retake";
     const sc = $("shotCredit"); sc.replaceChildren(); sc.hidden = !shot.feed;
     if (shot.feed) {
       sc.append("📹 Image: ");
@@ -369,7 +373,13 @@
     const m = $("marker"); m.style.left = (tap.x * 100) + "%"; m.style.top = (tap.y * 100) + "%"; m.hidden = false;
     $("tapHint").hidden = true;
   });
-  function retake() { shot = null; show("stStart"); }
+  // Camera-feed stills: "Grab again" takes a fresh frame; phone photos go back to the camera.
+  function retake() {
+    if (shot && shot.source === "feed") { shot = null; grabFeed(); return; }
+    shot = null; show("stStart");
+    if (stream === null && $("stLive")) startCamera();
+  }
+  function cancelShot() { shot = null; $("startErr").textContent = ""; show("stStart"); }
 
   async function submit() {
     const btn = $("goBtn"); btn.disabled = true; $("submitErr").textContent = "";
@@ -647,6 +657,7 @@
       cap.append((refs.length > 1 ? `${i + 1}/${refs.length} · ` : ""));
       if (r.source === "own") cap.append(r.label);
       else {
+        if (r.source === "commons-make") cap.appendChild(el("b", "samebuilder", "Same builder, other model · "));
         const a = el("a", null, r.artist + " · " + r.license); a.href = r.page; a.target = "_blank"; a.rel = "noopener";
         cap.append(a, " · Wikimedia Commons");
       }
@@ -673,7 +684,7 @@
     if (conf) {
       const done = el("div", "confirmed");
       done.append(el("div", "small", "CONFIRMED"),
-        el("div", "conf-name", conf.model_unknown ? "Make/model unknown" : (conf.make + " " + conf.model).trim()));
+        el("div", "conf-name" + (conf.choice === "unsure" ? " muted" : ""), conf.choice === "unsure" ? "Can't tell from this photo" : conf.model_unknown ? "Make/model unknown" : (conf.make + " " + conf.model).trim()));
       const p = conf.points || {};
       const bits = [];
       if (!conf.model_unknown) {
@@ -719,13 +730,18 @@
     } else {
       card.appendChild(el("div", "small", "The AI had no make/model guess for this photo."));
     }
-    // none of these
+    // can't tell / none of these
+    const cant = el("button", "btn", "Can't tell");
+    cant.title = "The photo isn't enough to decide";
+    cant.onclick = () => sendConfirm(d.id, { choice: "unsure", hull: (d.ai || {}).hull || "unknown", rig: (d.ai || {}).rig || "unknown",
+                                             size: (d.ai || {}).size_class || "unknown" });
     const noneBtn = el("button", "btn", "None of these");
     const form = noneForm(d);
     form.hidden = true;
-    noneBtn.onclick = () => { form.hidden = !form.hidden; noneBtn.hidden = true; };
-    if (d._changing && d._changing.choice !== "candidate") { form.hidden = false; noneBtn.hidden = true; }
-    card.append(el("div", "spacer"), noneBtn, form);
+    noneBtn.onclick = () => { form.hidden = !form.hidden; two.hidden = true; };
+    if (d._changing && !["candidate", "unsure"].includes(d._changing.choice)) { form.hidden = false; noneBtn.hidden = true; }
+    const two = el("div", "row"); two.append(cant, noneBtn);
+    card.append(el("div", "spacer"), two, form);
     if (d.ai && d.ai.notes) card.appendChild(el("p", "small", "AI note: " + d.ai.notes));
     return card;
   }

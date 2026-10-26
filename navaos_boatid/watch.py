@@ -33,6 +33,7 @@ WATCH_RADIUS_M = 250
 FRESH_FIX_S = 180
 AIS_BURST_EVERY_S = 120
 MAX_PER_WINDOW = 6
+MIN_SOG_KN = 2.0    # moored boats "move" ~1 kn swinging on their moorings (SAPPHIRE, 2026-10-26)
 
 
 def _dist_m(lat1, lon1, lat2, lon2) -> float:
@@ -86,7 +87,7 @@ class BridgeWatch:
             mmsi = v.get("mmsi")
             if mmsi in self.captured_this_window or mmsi == own or v.get("lat") is None:
                 continue
-            if now - (v.get("pos_ts") or 0) > FRESH_FIX_S or not reveal._moving(v):
+            if now - (v.get("pos_ts") or 0) > FRESH_FIX_S or not reveal._moving(v) or (v.get("sog") or 0) < MIN_SOG_KN:
                 continue
             if _dist_m(wp["lat"], wp["lon"], v["lat"], v["lon"]) > WATCH_RADIUS_M:
                 continue

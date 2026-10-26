@@ -179,7 +179,7 @@ def models():
 
 
 class Confirm(BaseModel):
-    choice: str                     # candidate | own | typed | model_unknown
+    choice: str                     # candidate | own | typed | model_unknown | unsure ("can't tell")
     candidate_index: int | None = None
     make: str = ""
     model: str = ""
@@ -211,15 +211,16 @@ def confirm(sid: str, req: Confirm):
     row = store.get(sid)
     if row is None:
         raise HTTPException(404, "No such sighting")
-    if req.choice not in ("candidate", "own", "typed", "model_unknown"):
+    if req.choice not in ("candidate", "own", "typed", "model_unknown", "unsure"):
         raise HTTPException(400, "Unknown choice.")
     make, model = req.make.strip()[:60], req.model.strip()[:80]
-    if req.choice != "model_unknown" and not make:
+    unknown = req.choice in ("model_unknown", "unsure")
+    if not unknown and not make:
         raise HTTPException(400, "Please give at least the make (e.g. Catalina).")
     conf = {
         "choice": req.choice, "candidate_index": req.candidate_index,
-        "make": make if req.choice != "model_unknown" else "", "model": model if req.choice != "model_unknown" else "",
-        "model_unknown": req.choice == "model_unknown",
+        "make": "" if unknown else make, "model": "" if unknown else model,
+        "model_unknown": unknown,
         "hull": req.hull if req.hull in identify.HULLS else "unknown",
         "rig": req.rig if req.rig in identify.RIGS else "unknown",
         "size": req.size if req.size in identify.SIZES else "unknown",

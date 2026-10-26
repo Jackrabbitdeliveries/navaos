@@ -30,6 +30,11 @@ USER_AGENT = "NavaOS-BoatID/0.1 (personal hobby project; https://github.com/Jack
 CACHE_FILE = store.DATA_DIR / "commons_cache.json"
 CACHE_TTL_S = 30 * 86400
 OK_LICENSES = ("cc0", "public domain", "pd", "cc by")   # "cc by" also covers CC BY-SA
+# A reference photo must be of a boat: its title or a Commons category has to say
+# so ("Leopard 43" otherwise finds Leopard tanks, "Bristol 42" street addresses).
+BOAT_WORDS = ("sailboat", "sailing", "yacht", "catamaran", "trimaran", "sloop", "ketch", "yawl", "schooner",
+              "cutter (boat)", "boat", "sail ", "marina", "regatta", "monohull")
+CACHE_VERSION = "v2|"   # bump when the stored fields change
 
 _cache_lock = threading.Lock()
 
@@ -110,10 +115,11 @@ def _strip_html(s: str) -> str:
     return html.unescape(re.sub(r"<[^>]+>", "", s or "")).strip()
 
 
-def _search_commons(query: str, limit: int = 12) -> list[dict]:
+def _search_commons(query: str, limit: int = 20) -> list[dict]:
     params = {"action": "query", "format": "json", "generator": "search", "gsrnamespace": "6",
-              "gsrsearch": query, "gsrlimit": str(limit), "prop": "imageinfo",
-              "iiprop": "url|extmetadata|mime", "iiurlwidth": "800"}
+              "gsrsearch": query, "gsrlimit": str(limit),
+              "iiprop": "url|extmetadata|mime", "iiurlwidth": "800",
+              "prop": "imageinfo|categories", "cllimit": "max", "clshow": "!hidden"}
     req = urllib.request.Request(COMMONS_API + "?" + urllib.parse.urlencode(params), headers={"User-Agent": USER_AGENT})
     with urllib.request.urlopen(req, timeout=8) as r:
         data = json.load(r)
@@ -130,6 +136,10 @@ def _search_commons(query: str, limit: int = 12) -> list[dict]:
         thumb = ii.get("thumburl") or ii.get("url")
         if not thumb or not thumb.startswith(("https://upload.wikimedia.org/", "https://thumb.wikimedia.org/")):
             continue
+        cats = " ".join(c.get("title", "") for c in p.get("categories", [])).lower()
+        title = p.get("title", "").lower()
+        if not any(w in title or w in cats for w in BOAT_WORDS):
+            continue                     # not a boat photo
         out.append({"source": "commons", "url": thumb, "page": ii.get("descriptionurl"),
                     "title": p.get("title", "").removeprefix("File:"),
                     "artist": _strip_html(meta.get("Artist", {}).get("value", ""))[:80] or "unknown",
@@ -138,8 +148,9 @@ def _search_commons(query: str, limit: int = 12) -> list[dict]:
 
 
 def _cached_search(query: str) -> Optional[list[dict]]:
+    query_key = CACHE_VERSION + query
     with _cache_lock:
-        hit = _load_cache().get(query)
+        hit = _load_cache().get(query_key)
     if hit and time.time() - hit["at"] < CACHE_TTL_S:
         return hit["results"]
     try:
@@ -149,27 +160,68 @@ def _cached_search(query: str) -> Optional[list[dict]]:
         return None
     with _cache_lock:
         cache = _load_cache()
-        cache[query] = {"at": time.time(), "results": results}
+        cache[query_key] = {"at": time.time(), "results": results}
         _save_cache(cache)
     return results
 
 
+def model_alternatives(model: str) -> list[str]:
+    """'Belize 43 / Helia 44' -> ['belize 43', 'helia 44']; '440 / 450' -> ['440', '450'];
+    'Oceanis 350-390' -> ['oceanis 350', 'oceanis 390']; drops chatty extras ('e.g.', 'era sloop')."""
+    out = []
+    for part in re.split(r"[/,]| or ", model or ""):
+        toks = norm(part).split()
+        words = [t for t in toks if not any(c.isdigit() for c in t) and t not in ("e", "g", "eg", "era", "sloop", "similar")]
+        nums = [n for t in toks if any(c.isdigit() for c in t) for n in t.split("-") if n]
+        if nums:
+            for n in nums:
+                out.append(" ".join(words[:1] + [n]))
+        elif words:
+            out.append(" ".join(words[:2]))
+    return list(dict.fromkeys(a for a in out if a))[:3]
+
+
 def commons_references(make: str, model: str, limit: int = 6) -> list[dict]:
-    mw, num = make_word(make), model_number(model)
+    mw = make_word(make)
     if not mw:
         return []
     keep: list[dict] = []
-    # Full make first ("island packet 38"); if that finds too little, the first
-    # word ("morgan 323" finds what "morgan yachts 323" misses).
-    for query in dict.fromkeys([f"{norm(make)} {num} sailboat".strip(), f"{mw} {num} sailboat".strip()]):
-        for r in _cached_search(query) or []:
-            t = norm(r["title"])
-            if mw in t and (not num or num in t.split()) and all(k["url"] != r["url"] for k in keep):
+
+    def take(results, must: list[str]):
+        for r in results or []:
+            t = norm(r["title"]).split()
+            if mw in t and all(m in t for m in must) and all(k["url"] != r["url"] for k in keep):
                 keep.append(r)
-        if len(keep) >= 2:
+
+    # One search per model alternative ("make + model"), falling back to the first
+    # make word; a file must name the make and the model number (or model word).
+    for alt in model_alternatives(model) or [model_number(model)]:
+        key = [t for t in alt.split() if any(c.isdigit() for c in t)] or alt.split()[:1]
+        for query in dict.fromkeys([f"{norm(make)} {alt}".strip(), f"{mw} {alt}".strip()]):
+            take(_cached_search(query), key)
+            if len(keep) >= 2:
+                break
+        if len(keep) >= limit:
             break
     return keep[:limit]
 
 
+def make_references(make: str, limit: int = 4) -> list[dict]:
+    """Fallback when a model has no photos: other boats by the same builder,
+    labelled as such - a builder's boats share a family look."""
+    mw = make_word(make)
+    if not mw:
+        return []
+    out = []
+    for query in dict.fromkeys([f"{norm(make)} sailboat", f"{norm(make)} catamaran", norm(make)]):
+        for r in _cached_search(query) or []:
+            if mw in norm(r["title"]).split() and all(o["url"] != r["url"] for o in out):
+                out.append({**r, "source": "commons-make"})
+        if len(out) >= limit:
+            break
+    return out[:limit]
+
+
 def references(make: str, model: str, exclude: Optional[str] = None) -> list[dict]:
-    return own_references(make, model, exclude) + commons_references(make, model)
+    exact = own_references(make, model, exclude) + commons_references(make, model)
+    return exact or make_references(make)

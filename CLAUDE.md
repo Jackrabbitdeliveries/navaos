@@ -292,6 +292,19 @@ Legacy path (`ChannelConfig.receiver="rtl_fm"`): rtl_fm → AdaptiveSquelch
     with only SAIFIR (19 m away) in view — SAIFIR is Nava itself; Kevin was on
     Nava's dock photographing a neighbour that isn't on AIS → correct answer
     "none" (which it now returns).
+  - **Reference/compare fixes (2026-10-26, Kevin's feedback):** Commons search
+    now runs per model *alternative* (`library.model_alternatives`: "Belize 43 /
+    Helia 44" → belize 43, helia 44; "440 / 450" → 440, 450), no "sailboat"
+    word, 20 results, and **requires a boat word in the file title or its
+    Commons categories** (`BOAT_WORDS`; without it "Leopard 43" found tanks,
+    "Bristol 42" street addresses). Cache keys prefixed `v2|`. If a model has
+    no photos → `make_references()` = same builder's boats, `source
+    "commons-make"`, captioned "Same builder, other model". Reference photos
+    shown whole (`object-fit: contain`, letterboxed) so the hull isn't cropped
+    off. Third confirm choice **"Can't tell"** (`choice: "unsure"` → no model,
+    no model points). Guess screen: "↻ Grab again" (feed) / "Retake" (phone) /
+    "Pick another" (upload) + "Cancel". Bridge watch needs SOG ≥ 2 kn (a moored
+    boat, SAPPHIRE, triggered it at 1 kn).
   - **Live camera feeds (2026-10-26):** `navaos_boatid/feeds.py` registry — one
     entry per camera (built-in `bridge-of-lions`: YouTube `uLJBad4vSno`, city,
     credit "See St. Augustine" → https://www.youtube.com/@seestaug, permission
