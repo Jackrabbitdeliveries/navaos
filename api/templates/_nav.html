@@ -1,0 +1,63 @@
+<!-- Site-wide "pancake" menu (2026-10-26). Injected into every page by
+     api/nav.py:with_nav() just before </body>, so all pages share one menu.
+     Self-contained: nv-* class names and its own colours so it can't clash
+     with a page's styles. Add new pages to NV_PAGES below. -->
+<style>
+  .nv-btn { position: fixed; top: max(10px, env(safe-area-inset-top)); right: max(10px, env(safe-area-inset-right)); z-index: 2000;
+            width: 44px; height: 44px; border-radius: 12px; border: 1px solid #1f3b60; background: rgba(7,17,31,0.88);
+            color: #e6eef8; font-size: 22px; line-height: 1; cursor: pointer; display: flex; align-items: center; justify-content: center;
+            box-shadow: 0 2px 12px rgba(0,0,0,0.5); -webkit-tap-highlight-color: transparent; }
+  .nv-btn:focus-visible { outline: 2px solid #4fd1ff; outline-offset: 2px; }
+  .nv-shade { position: fixed; inset: 0; z-index: 1998; background: rgba(0,0,0,0.35); }
+  .nv-panel { position: fixed; top: calc(max(10px, env(safe-area-inset-top)) + 52px); right: max(10px, env(safe-area-inset-right)); z-index: 1999;
+              width: min(270px, calc(100vw - 20px)); background: #0f1f36; border: 1px solid #1f3b60; border-radius: 14px;
+              box-shadow: 0 8px 30px rgba(0,0,0,0.6); padding: 6px; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif; }
+  .nv-shade[hidden], .nv-panel[hidden] { display: none !important; }
+  .nv-head { font-size: 11px; font-weight: 700; letter-spacing: 0.18em; color: #8aa0b8; padding: 8px 10px 6px; }
+  .nv-panel a { display: flex; align-items: center; gap: 10px; color: #e6eef8; text-decoration: none; font-size: 16px; font-weight: 600;
+                padding: 11px 10px; border-radius: 10px; }
+  .nv-panel a:hover, .nv-panel a:focus-visible { background: #132845; outline: none; }
+  .nv-panel a.nv-here { background: #132845; color: #4fd1ff; }
+  .nv-panel a .nv-ic { width: 22px; text-align: center; }
+  .nv-sep { height: 1px; background: #1f3b60; margin: 4px 8px; }
+  /* The menu replaces each page's own corner "back" links (they'd sit under the button). */
+  a.back { display: none !important; }
+</style>
+<button class="nv-btn" id="nvBtn" aria-label="Menu" aria-expanded="false" aria-controls="nvPanel">☰</button>
+<div class="nv-shade" id="nvShade" hidden></div>
+<nav class="nv-panel" id="nvPanel" hidden aria-label="Pages"></nav>
+<script>
+(function () {
+  const NV_PAGES = [
+    ["/radio/player", "📻", "Player"],
+    ["/radio/recordings/view", "🎙", "Recordings"],
+    ["/radio/bridge/view", "🌉", "Bridge cam"],
+    ["/radio/ais/view", "🗺", "Ship map"],
+    "-",
+    ["/boats/snap", "📷", "Snap a sailboat"],
+    ["/boats/log", "⛵", "My boat IDs"],
+    "-",
+    ["/radio/noise/view", "📶", "Antenna noise meter"],
+  ];
+  const btn = document.getElementById("nvBtn"), panel = document.getElementById("nvPanel"), shade = document.getElementById("nvShade");
+  const head = document.createElement("div"); head.className = "nv-head"; head.textContent = "NAVA VHF";
+  panel.appendChild(head);
+  for (const p of NV_PAGES) {
+    if (p === "-") { const s = document.createElement("div"); s.className = "nv-sep"; panel.appendChild(s); continue; }
+    const a = document.createElement("a"); a.href = p[0];
+    if (location.pathname === p[0]) { a.className = "nv-here"; a.setAttribute("aria-current", "page"); }
+    const ic = document.createElement("span"); ic.className = "nv-ic"; ic.textContent = p[1];
+    a.append(ic, document.createTextNode(p[2]));
+    panel.appendChild(a);
+  }
+  function setOpen(open) {
+    panel.hidden = shade.hidden = !open;
+    btn.setAttribute("aria-expanded", String(open));
+    btn.textContent = open ? "✕" : "☰";
+    if (open) { const f = panel.querySelector("a"); if (f) f.focus(); }
+  }
+  btn.addEventListener("click", () => setOpen(panel.hidden));
+  shade.addEventListener("click", () => setOpen(false));
+  document.addEventListener("keydown", e => { if (e.key === "Escape" && !panel.hidden) { setOpen(false); btn.focus(); } });
+})();
+</script>

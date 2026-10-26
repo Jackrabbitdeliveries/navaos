@@ -7,6 +7,7 @@ from fastapi import APIRouter, Header, HTTPException
 from fastapi.responses import FileResponse, StreamingResponse, HTMLResponse
 from pydantic import BaseModel
 
+from api.nav import with_nav
 from navaos_audio.channel_manager import channel_manager, SessionConflictError
 from navaos_audio.control import ControlError, control
 from navaos_audio import noise_meter as nm
@@ -458,7 +459,7 @@ def _render(template: str) -> str:
     restart), with the channel table substituted in."""
     html = (_TEMPLATES / template).read_text()
     html = html.replace("__CHANNEL_ORDER__", json.dumps(list(CHANNELS)))
-    return html.replace("__CHANNELS__", json.dumps(CHANNELS))
+    return with_nav(html.replace("__CHANNELS__", json.dumps(CHANNELS)))
 
 
 @router.get("/player")

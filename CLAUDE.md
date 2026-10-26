@@ -123,6 +123,12 @@ Legacy path (`ChannelConfig.receiver="rtl_fm"`): rtl_fm → AdaptiveSquelch
   queue rules), AIS boats ≤1.5 nm of the bridge from the last 24 h ("toward
   bridge" only if the fix is <15 min old), and the latest 8 ch 09 clips with
   transcripts. Linked from the player's TOOLS grid (now 2×2).
+- **Site-wide menu (2026-10-26):** `api/templates/_nav.html` (fixed ☰ button
+  top-right, panel with all pages, current page highlighted, Esc/outside-tap
+  closes; nv-* classes, own colours; hides each page's `a.back` corner links)
+  is injected before `</body>` by `api/nav.py:with_nav()`, called from
+  `stream._render()` and `boatid._page()`. **New pages: add them to
+  `NV_PAGES` in `_nav.html`.**
 - `static/` — images served at `/radio/static/<name>` (e.g. `hero.jpg`, the
   player header photo; page falls back to a gradient if it's missing).
 - `navaos_audio/` package:

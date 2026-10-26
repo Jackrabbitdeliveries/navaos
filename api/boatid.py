@@ -18,6 +18,7 @@ from fastapi import APIRouter, HTTPException
 from fastapi.responses import FileResponse, HTMLResponse
 from pydantic import BaseModel
 
+from api.nav import with_nav
 from navaos_boatid import identify, library, reveal, store
 
 router = APIRouter(prefix="/boats", tags=["boat-id"])
@@ -31,7 +32,7 @@ def _page(name: str) -> HTMLResponse:
     html = (_TEMPLATES / name).read_text()
     html = html.replace("__HULLS__", json.dumps(identify.HULLS))
     html = html.replace("__RIGS__", json.dumps(identify.RIGS))
-    return HTMLResponse(html.replace("__SIZES__", json.dumps(identify.SIZES)))
+    return HTMLResponse(with_nav(html.replace("__SIZES__", json.dumps(identify.SIZES))))
 
 
 @router.get("/snap")
