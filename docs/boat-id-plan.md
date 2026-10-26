@@ -24,6 +24,12 @@ experiments and build the Phase 1 sailboat pages directly, in usable pieces:
 (snap-triggered AIS burst), (4) scoring + "My sightings" log. Experiments
 happen naturally through use.
 
+**Bridge of Lions live cam (2026-10-26):** the camera owner and the YouTube
+channel owner gave Kevin permission (verbally) to use **stills or clips** from
+their live cam to run Boat ID, with **credit to the channel wherever possible**;
+a live VHF feed for them and other benefits to be discussed later. This moves
+Phase 4 (fixed-camera auto-labelling) up — see "Fixed camera" below.
+
 Still open: D1 (name — defaulting to `/boats`), D5 (library bootstrap), D7, D8, D9 — the defaults below apply unless Kevin says otherwise.
 
 ### What "sailboats only" means in practice

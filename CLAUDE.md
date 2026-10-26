@@ -114,9 +114,15 @@ Legacy path (`ChannelConfig.receiver="rtl_fm"`): rtl_fm → AdaptiveSquelch
   from the player's TOOLS row.
 - `api/templates/bridge.html` — **Bridge of Lions watch page** (`/radio/bridge/view`,
   2026-10-25): official YouTube embed (youtube-nocookie, muted autoplay) of the
-  public "See St. Augustine" live cam — **embed only, never capture frames**
-  (YouTube ToS + copyright; Kevin will ask the owner about permission/partnering
-  once there's something to show; their VHF audio only ran for a week). Video id
+  public "See St. Augustine" live cam. **PERMISSION GRANTED 2026-10-26 (verbal,
+  in person, to Kevin):** the camera owner and his son (the YouTube channel
+  owner) agreed NavaOS may use **stills or clips from the Bridge of Lions live
+  cam to operate Boat ID**, and may keep building on it. Conditions: **credit
+  the channel wherever possible** (exact credit wording + link to confirm with
+  Kevin; YouTube oEmbed author is "See St. Augustine", @seestaug). Once Kevin is
+  happy with the product they'll discuss a live VHF feed for their stream and
+  other benefits. Don't put their personal names in this public repo. Before
+  this date: embed only, no frame capture. Video id
   is a setting: `GET/POST /radio/bridge/config` (`~/navaos-data/bridge_cam.json`,
   settings-locked, accepts any YouTube link form; default `uLJBad4vSno`, checked
   embeddable via oEmbed). Plus ch 09 listen button (normal `/control` tune 09 +
