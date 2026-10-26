@@ -361,6 +361,10 @@ Legacy path (`ChannelConfig.receiver="rtl_fm"`): rtl_fm → AdaptiveSquelch
     "capturing now" / captured today; My IDs has ALL · MY SNAPS · 📹 BRIDGE CAM
     chips (`/boats/log#bridge`). Logs `BRIDGEWATCH-WINDOW/CAPTURE/AIS-SKIPPED`.
     Limits: boats without AIS never trigger; no fresh AIS while someone listens.
+  - **AIS card redraw fix (2026-10-26):** the result page polls every 3 s while
+    the reveal runs; it used to rebuild the AIS card each time, closing the
+    "Pick from N AIS boats" list mid-scroll. Now it redraws only when `ais`
+    changed, and `aisUi` {open, rejected} keeps the list open / "No" state.
   - **Background lookup (2026-10-26):** `navaos_boatid/lookup.py` — on demand
     ("🔎 Look up online" in the result screen's BACKGROUND card; name prefilled
     from the AIS answer or the hull name, editable) → `POST
