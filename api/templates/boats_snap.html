@@ -416,7 +416,7 @@
       if (!rendered) {
         if (d.ai_status === "pending" && Date.now() - t0 < 150000) return;
         renderResult(d); rendered = true;
-      } else {
+      } else if (JSON.stringify(d.ais) !== lastAisJson) {   // redraw only on change - it would close an open list
         renderAis(d);
       }
       const a = d.ais || {};
@@ -524,7 +524,7 @@
   }
   async function aisReset(id) {
     const res = await fetch("/boats/sightings/" + id + "/ais/reset", { method: "POST" }).catch(() => null);
-    if (res && res.ok) renderAis(await res.json());
+    if (res && res.ok) { aisUi = { open: false, rejected: false }; renderAis(await res.json()); }
   }
 
   function vesselRow(id, c, extra) {
@@ -542,13 +542,16 @@
     return row;
   }
 
+  // UI state that must survive the AIS card being redrawn by the 3 s poll
+  let aisUi = { open: false, rejected: false }, lastAisJson = null;
+
   function nearbyPicker(id, a) {
     const wrap = el("div");
     const list = (a.nearby || []);
     const btn = el("button", "linkbtn", list.length ? `Pick from ${list.length} AIS boats within 1.5 km` : "");
-    const box = el("div"); box.hidden = true;
+    const box = el("div"); box.hidden = !aisUi.open;
     for (const n of list) box.appendChild(vesselRow(id, n, "bearing " + n.bearing + "°"));
-    btn.onclick = () => { box.hidden = !box.hidden; };
+    btn.onclick = () => { box.hidden = !box.hidden; aisUi.open = !box.hidden; };
     if (list.length) wrap.append(btn, box);
     return wrap;
   }
@@ -556,6 +559,8 @@
   function renderAis(d) {
     const card = document.getElementById("aisCard");
     if (!card) return;
+    if (card.dataset.sid !== d.id) { card.dataset.sid = d.id; aisUi = { open: false, rejected: false }; }
+    lastAisJson = JSON.stringify(d.ais);
     card.replaceChildren(el("h2", null, "AIS REVEAL"));
     const a = d.ais;
     if (!a) { card.appendChild(el("div", "small", "Checking AIS…")); return; }
@@ -601,9 +606,10 @@
       card.appendChild(el("div", "small", bits.join(" · ")));
       const row = el("div", "row");
       const yes = el("button", "btn primary", "Yes, that's her"); yes.onclick = () => aisChoose(d.id, c0.mmsi);
-      const no = el("button", "btn", "No"); no.onclick = () => { row.remove(); others.hidden = false; };
+      const no = el("button", "btn", "No"); no.onclick = () => { aisUi.rejected = true; row.remove(); others.hidden = false; };
       row.append(yes, no); card.appendChild(row);
-      const others = el("div"); others.hidden = true;
+      const others = el("div"); others.hidden = !aisUi.rejected;
+      if (aisUi.rejected) row.remove();
       for (const c of (a.candidates || []).slice(1)) others.appendChild(vesselRow(d.id, c, c.off_deg != null ? c.off_deg + "° off" : ""));
       const nb = el("button", "btn", "It's not on AIS"); nb.onclick = () => aisChoose(d.id, null);
       others.append(nearbyPicker(d.id, a), nb);
