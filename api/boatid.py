@@ -19,7 +19,7 @@ from fastapi.responses import FileResponse, HTMLResponse
 from pydantic import BaseModel
 
 from api.nav import with_nav
-from navaos_boatid import feeds, identify, library, reveal, store
+from navaos_boatid import capture, feeds, identify, library, reveal, store
 
 router = APIRouter(prefix="/boats", tags=["boat-id"])
 
@@ -121,6 +121,36 @@ def get_sighting(sid: str):
 def list_feeds():
     """Live camera feeds (public fields only), each with its credit."""
     return [feeds.public(fid) for fid in feeds.all_feeds()]
+
+
+_last_grab = {"t": 0.0}
+
+
+@router.post("/feeds/{feed_id}/frame")
+def grab_frame(feed_id: str):
+    """Grab the current still from a live camera feed (with the owners'
+    permission) so the user can frame a boat in it. Nothing is stored until
+    the user submits it as a sighting."""
+    if feeds.get(feed_id) is None:
+        raise HTTPException(404, "Unknown feed")
+    if time.time() - _last_grab["t"] < 3:
+        raise HTTPException(429, "One moment - grabbing frames too fast.")
+    _last_grab["t"] = time.time()
+    try:
+        jpeg, t = capture.grab(feed_id)
+    except capture.CaptureError as e:
+        raise HTTPException(502, str(e))
+    w, h = capture.image_size(jpeg) or (None, None)
+    return {"image": "data:image/jpeg;base64," + base64.b64encode(jpeg).decode(), "taken_at": t,
+            "w": w, "h": h, "feed": feeds.public(feed_id),
+            "zoomed_on_bridge": feeds.in_zoom_window(feeds.get(feed_id), t)}
+
+
+@router.get("/budget")
+def ai_budget():
+    from navaos_boatid import budget
+    ok, spent, cap = budget.allowed()
+    return {"spent_today_usd": round(spent, 2), "cap_usd": cap, "ok": ok}
 
 
 @router.get("/sightings")

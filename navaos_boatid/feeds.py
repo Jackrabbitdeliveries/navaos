@@ -33,6 +33,10 @@ BUILTIN = {
         "credit": "See St. Augustine",
         "credit_url": "https://www.youtube.com/@seestaug",
         "permission": "Stills or clips for Boat ID, credit the channel - granted by the camera and channel owners, 2026-10-26",
+        # The camera pans/zooms; boats in its bridge shots are near this point.
+        "watch_point": {"lat": 29.8925, "lon": -81.3086, "radius_m": 300, "label": "the Bridge of Lions"},
+        # Channel description: zooms on the drawbridge every half hour for 10 min, 08:00-19:45.
+        "zoom_schedule": {"start": "08:00", "end": "19:45", "minutes": [0, 30], "duration_min": 10},
     },
 }
 DEFAULT_FEED = "bridge-of-lions"
@@ -64,6 +68,19 @@ def all_feeds() -> dict[str, dict]:
 def get(feed_id: str) -> Optional[dict]:
     f = all_feeds().get(feed_id)
     return {"id": feed_id, **f} if f else None
+
+
+def in_zoom_window(feed: dict, t: float) -> bool:
+    """Is the camera on its zoomed bridge shot at epoch time t (Pi local time)?"""
+    z = feed.get("zoom_schedule")
+    if not z:
+        return False
+    import datetime as dt
+    d = dt.datetime.fromtimestamp(t)
+    hm = d.strftime("%H:%M")
+    if not (z["start"] <= hm <= z["end"]):
+        return False
+    return any(0 <= (d.minute - m) % 60 < z["duration_min"] for m in z["minutes"])
 
 
 def public(feed_id: str) -> Optional[dict]:

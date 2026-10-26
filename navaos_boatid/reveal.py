@@ -113,7 +113,55 @@ def size_class(length_m: float) -> str:
     return "under_30" if ft < 30 else "30_39" if ft < 40 else "40_49" if ft < 50 else "50_plus"
 
 
+def match_feed(row: dict, vessels: list[dict]) -> dict:
+    """Camera-feed stills: no phone position or compass. The feed's watch
+    point (e.g. the Bridge of Lions) stands in for "where the boat is":
+    AIS boats within its radius at the frame time are the candidates."""
+    from . import feeds
+    feed = feeds.get(row.get("feed_id") or "") or {}
+    wp = feed.get("watch_point")
+    if not wp:
+        return {"status": "unavailable", "reason": "This camera has no known viewpoint for AIS matching yet."}
+    t = row.get("taken_at") or row.get("created_at")
+    hull_name = _norm((row.get("ai") or {}).get("visible_name", ""))
+    own = _kit().get("own_mmsi")
+    cands, nearby = [], []
+    for v in vessels:
+        if own and v.get("mmsi") == own:
+            continue
+        pos = estimate_position(v, t)
+        if pos is None:
+            continue
+        dist, brg = _dist_bearing(wp["lat"], wp["lon"], pos["lat"], pos["lon"])
+        name = v.get("name") or ""
+        length = (v.get("to_bow") or 0) + (v.get("to_stern") or 0)
+        name_hit = bool(hull_name) and len(hull_name) >= 3 and (
+            _norm(name) == hull_name or difflib.SequenceMatcher(None, _norm(name), hull_name).ratio() >= 0.85)
+        entry = {"mmsi": v["mmsi"], "name": name, "distance_m": round(dist), "bearing": round(brg),
+                 "length_m": length if length > 1 else None, "sailing": v.get("shiptype") == 36}
+        if dist <= NEARBY_M:
+            nearby.append(entry)
+        if name_hit or dist <= wp.get("radius_m", 300) + pos["err_m"]:
+            cands.append({**entry, "shiptype": v.get("shiptype"), "kind": v.get("kind"),
+                          "size_class": size_class(length) if length > 1 else None, "off_deg": None,
+                          "pos_method": pos["method"], "pos_age_s": pos["age_s"],
+                          "z": 0.0 if name_hit else round(dist / max(1, wp.get("radius_m", 300)), 2),
+                          "name_match": name_hit, "moving": _moving(v)})
+    # moving boats first (they're the ones going through the bridge), then nearest
+    cands.sort(key=lambda c: (not c["name_match"], not c["moving"], c["distance_m"]))
+    nearby.sort(key=lambda n: n["distance_m"])
+    base = {"viewpoint": wp.get("label"), "candidates": cands[:6], "nearby": nearby[:15],
+            "computed_at": time.time(), "aim_true_deg": None}
+    if not cands:
+        return {**base, "status": "none"}
+    if cands[0]["name_match"] or len(cands) == 1:
+        return {**base, "status": "match"}
+    return {**base, "status": "ambiguous"}
+
+
 def match(row: dict, vessels: list[dict]) -> dict:
+    if row.get("source") == "feed":
+        return match_feed(row, vessels)
     s = row.get("sensors") or {}
     t = row.get("taken_at") or row.get("created_at")
     ai = row.get("ai") or {}

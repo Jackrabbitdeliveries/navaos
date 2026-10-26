@@ -149,4 +149,11 @@ def start(sid: str) -> None:
     if not AI_ENABLED:
         store.update(sid, ai_status="error", ai_error="AI disabled (NAVAOS_BOATID_AI=0).")
         return
+    from . import budget
+    ok, spent, cap = budget.allowed()
+    if not ok:
+        store.update(sid, ai_status="error",
+                     ai_error=f"Daily AI budget reached (${spent:.2f} of ${cap:.2f}) - resets at midnight.")
+        print(f"BOATID-BUDGET {sid} refused spent={spent:.2f} cap={cap:.2f}", flush=True)
+        return
     threading.Thread(target=run, args=(sid,), daemon=True, name=f"boatid-{sid}").start()

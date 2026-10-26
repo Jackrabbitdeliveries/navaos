@@ -318,6 +318,23 @@ Legacy path (`ChannelConfig.receiver="rtl_fm"`): rtl_fm → AdaptiveSquelch
     ~2 s; `ffmpeg -i URL -frames:v 1` grabs a still in ~4 s (formats 269–270,
     144p–1080p). URLs expire; re-resolve each session. YouTube may block it
     some day — expect occasional breakage.
+  - **Frame-a-boat from the feed (built 2026-10-26):** `navaos_boatid/capture.py`
+    (yt-dlp → cached HLS URL 30 min → `nice ffmpeg` one frame, scaled ≤1568 px,
+    metadata stripped; one grab at a time; re-resolves once on failure; pure-
+    Python JPEG size reader). `POST /boats/feeds/{id}/frame` (≥3 s apart) →
+    data URL + taken_at + `zoomed_on_bridge`; nothing stored until the user
+    submits. Snap page **feed mode** `/boats/snap?feed=bridge-of-lions` ("Grab a
+    frame from the live cam", credit shown on guess + result screens); Bridge
+    page button "📷 Identify a boat in this view". Feeds have `watch_point`
+    (Bridge of Lions 29.8925,−81.3086, r 300 m) and `zoom_schedule`
+    (`feeds.in_zoom_window()`). `reveal.match_feed()`: candidates = AIS boats
+    within the watch-point radius at frame time (moving first), hull-name match
+    wins; status match/ambiguous/none + nearby list. First grab 12:31: bridge
+    open, motor yacht in the span (AIS stale in the test copy).
+  - **AI budget (2026-10-26):** `navaos_boatid/budget.py` — **$2/day cap** on ALL
+    Boat ID Claude calls (kit.json `ai_daily_cap_usd`), spend computed from
+    stored token counts × list price per model; `identify.start()` refuses with
+    "Daily AI budget reached" when spent + $0.05 would exceed it. `GET /boats/budget`.
   - Proposed **Bridge watch v1** (not built): only during the :00–:10/:30–:40
     daytime zoom windows, grab stills every few seconds; keep + identify
     (Opus) only when AIS shows a boat at the bridge (moving, ~≤200 m); request

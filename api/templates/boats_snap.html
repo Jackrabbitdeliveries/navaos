@@ -136,7 +136,12 @@
       <p class="lead">Point your camera at a sailboat, make a quick guess, then see what the AI thinks.
         The page asks for <b>camera</b>, <b>location</b> and <b>motion/compass</b> access - location and
         direction are what let it work out <i>which</i> boat you were pointing at.</p>
-      <button class="btn primary" onclick="startCamera()">Start camera</button>
+      <div id="feedStart" hidden>
+        <button class="btn primary" onclick="grabFeed()">📹 Grab a frame from the live cam</button>
+        <div class="credit-line" id="feedCredit"></div>
+        <div class="small" id="feedNote" style="margin:6px 0 10px"></div>
+      </div>
+      <button class="btn" id="camBtn" onclick="startCamera()">Start camera</button>
       <div class="row" style="justify-content:center"><label class="linkbtn">or upload a photo<input id="fileIn" type="file" accept="image/*" hidden></label></div>
       <div id="startErr" class="err"></div>
     </div>
@@ -161,6 +166,7 @@
         <div id="marker" class="marker" hidden></div>
         <div class="tap-hint" id="tapHint"><span>Tap the boat you mean</span></div>
       </div>
+      <div class="credit-line" id="shotCredit" hidden></div>
       <div class="card">
         <h2>YOUR GUESS</h2>
         <div class="q"><label>HULL</label><div class="chips" id="gHull"></div></div>
@@ -346,6 +352,12 @@
   }
   function openGuess() {
     tap = null; guess = { hull: null, rig: null, size: null };
+    const sc = $("shotCredit"); sc.replaceChildren(); sc.hidden = !shot.feed;
+    if (shot.feed) {
+      sc.append("📹 Image: ");
+      const a = el("a", null, shot.feed.credit); a.href = shot.feed.credit_url; a.target = "_blank"; a.rel = "noopener";
+      sc.append(a, " · " + shot.feed.name);
+    }
     $("shot").src = shot.dataUrl; $("marker").hidden = true; $("tapHint").hidden = false;
     $("gModel").value = ""; $("submitErr").textContent = "";
     chips("gHull", HULLS, "hull"); chips("gRig", RIGS, "rig"); chips("gSize", SIZES, "size");
@@ -361,7 +373,7 @@
 
   async function submit() {
     const btn = $("goBtn"); btn.disabled = true; $("submitErr").textContent = "";
-    const body = { image: shot.dataUrl, source: shot.source, client: clientId, taken_at: shot.taken_at,
+    const body = { image: shot.dataUrl, source: shot.source, feed_id: shot.feed ? shot.feed.id : null, client: clientId, taken_at: shot.taken_at,
       img_w: shot.w, img_h: shot.h, tap_x: tap && tap.x, tap_y: tap && tap.y, sensors: shot.sensors,
       guess: { hull: guess.hull || "unknown", rig: guess.rig || "unknown", size: guess.size || "unknown", model: $("gModel").value.trim() } };
     let res;
@@ -569,7 +581,7 @@
       const bits = [];
       if (c0.sailing) bits.push("Sailing");
       if (c0.length_m) bits.push(Math.round(c0.length_m * 3.281) + " ft");
-      bits.push(dist(c0.distance_m));
+      bits.push(a.viewpoint ? Math.round(c0.distance_m) + " m from " + a.viewpoint : dist(c0.distance_m));
       if (c0.off_deg != null && !c0.name_match) bits.push(c0.off_deg + "° from your aim");
       bits.push((c0.pos_method === "moored" ? "moored" : c0.pos_method) + ", AIS fix " + agoTxt(c0.pos_age_s) + (c0.pos_method === "from later fix" ? " after" : " from") + " the photo");
       card.appendChild(el("div", "small", bits.join(" · ")));
@@ -578,7 +590,7 @@
       const no = el("button", "btn", "No"); no.onclick = () => { row.remove(); others.hidden = false; };
       row.append(yes, no); card.appendChild(row);
       const others = el("div"); others.hidden = true;
-      for (const c of (a.candidates || []).slice(1)) others.appendChild(vesselRow(d.id, c, c.off_deg + "° off"));
+      for (const c of (a.candidates || []).slice(1)) others.appendChild(vesselRow(d.id, c, c.off_deg != null ? c.off_deg + "° off" : ""));
       const nb = el("button", "btn", "It's not on AIS"); nb.onclick = () => aisChoose(d.id, null);
       others.append(nearbyPicker(d.id, a), nb);
       card.appendChild(others);
@@ -586,10 +598,10 @@
     }
     if (a.status === "ambiguous") {
       card.appendChild(el("div", "ais-lead", "Which of these is it?"));
-      for (const c of a.candidates) card.appendChild(vesselRow(d.id, c, c.name_match ? "name matches" : c.off_deg + "° off"));
+      for (const c of a.candidates) card.appendChild(vesselRow(d.id, c, c.name_match ? "name matches" : c.off_deg != null ? c.off_deg + "° off" : (c.moving ? "moving" : "")));
     } else {
-      card.appendChild(el("div", "ais-lead", "No AIS boat in that direction"));
-      card.appendChild(el("div", "small", "Most small boats don't broadcast AIS - or the compass may be off. If you know it's one of these, pick it:"));
+      card.appendChild(el("div", "ais-lead", a.viewpoint ? "No AIS boat near " + a.viewpoint + " at that moment" : "No AIS boat in that direction"));
+      card.appendChild(el("div", "small", a.viewpoint ? "Most small boats don't broadcast AIS. If you know it's one of these, pick it:" : "Most small boats don't broadcast AIS - or the compass may be off. If you know it's one of these, pick it:"));
     }
     card.appendChild(nearbyPicker(d.id, a));
     const nb = el("button", "btn", "It's not on AIS"); nb.style.marginTop = "8px"; nb.onclick = () => aisChoose(d.id, null);
@@ -746,6 +758,33 @@
   }
 
   function again() { clearInterval(pollTimer); shot = null; try { history.replaceState(null, "", location.pathname); } catch (e) {} show("stStart"); }
+
+  // ---------- live camera feed mode (/boats/snap?feed=<id>) ----------
+  const FEED_ID = new URLSearchParams(location.search).get("feed");
+  async function initFeed() {
+    if (!FEED_ID) return;
+    let list = [];
+    try { list = await (await fetch("/boats/feeds")).json(); } catch (e) {}
+    const f = list.find(x => x.id === FEED_ID);
+    if (!f) return;
+    $("feedStart").hidden = false; $("camBtn").textContent = "Use my phone camera instead";
+    const c = $("feedCredit"); c.replaceChildren("📹 ");
+    const a = el("a", null, f.credit); a.href = f.credit_url; a.target = "_blank"; a.rel = "noopener";
+    c.append(a, " · " + f.name + (f.city ? ", " + f.city : ""));
+    $("feedNote").textContent = "Grabs what the camera sees right now (it can be a few seconds different from the video you're watching). Best during the half-hour bridge zooms.";
+  }
+  async function grabFeed() {
+    $("startErr").textContent = "Grabbing a frame…";
+    let r;
+    try { r = await fetch("/boats/feeds/" + encodeURIComponent(FEED_ID) + "/frame", { method: "POST" }); }
+    catch (e) { $("startErr").textContent = "Network error."; return; }
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) { $("startErr").textContent = d.detail || "Couldn't grab a frame."; return; }
+    $("startErr").textContent = "";
+    shot = { dataUrl: d.image, w: d.w, h: d.h, source: "feed", taken_at: d.taken_at, sensors: null, feed: d.feed };
+    openGuess();
+  }
+  initFeed();
 
   // Reopen a result from its link (#id)
   (function () {
