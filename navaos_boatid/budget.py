@@ -45,10 +45,11 @@ def spent_today() -> float:
     start = dt.datetime.combine(dt.date.today(), dt.time()).timestamp()
     total = 0.0
     for r in store.recent(2000):
-        if r["created_at"] < start:
-            break
-        if r.get("ai_meta"):
+        if r["created_at"] >= start and r.get("ai_meta"):
             total += call_cost(r["ai_meta"])
+        lk = r.get("lookup") or {}
+        if (lk.get("at") or 0) >= start:             # a lookup counts on the day it ran, whatever the photo's date
+            total += (lk.get("meta") or {}).get("cost_usd", 0) or 0
     return total
 
 

@@ -48,12 +48,13 @@ CREATE TABLE IF NOT EXISTS sightings (
     ai_error    TEXT,
     confirm     TEXT,                   -- JSON (piece 2)
     ais         TEXT,                   -- JSON (piece 3)
-    feed_id     TEXT                    -- navaos_boatid.feeds id when source = feed
+    feed_id     TEXT,                   -- navaos_boatid.feeds id when source = feed
+    lookup      TEXT                    -- JSON: background web lookup (lookup.py)
 );
 CREATE INDEX IF NOT EXISTS sightings_created ON sightings(created_at);
 """
 
-JSON_COLS = ("sensors", "guess", "ai", "ai_meta", "confirm", "ais")
+JSON_COLS = ("sensors", "guess", "ai", "ai_meta", "confirm", "ais", "lookup")
 
 
 def kit_id() -> str:
@@ -71,6 +72,8 @@ def _conn() -> sqlite3.Connection:
     cols = {r[1] for r in c.execute("PRAGMA table_info(sightings)")}
     if "feed_id" not in cols:   # databases created before 2026-10-26
         c.execute("ALTER TABLE sightings ADD COLUMN feed_id TEXT")
+    if "lookup" not in cols:
+        c.execute("ALTER TABLE sightings ADD COLUMN lookup TEXT")
     return c
 
 

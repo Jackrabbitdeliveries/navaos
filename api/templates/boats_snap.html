@@ -121,6 +121,9 @@
     .vmain b { font-size: 15px; }
     .vgo { flex: none; font-size: 12px; font-weight: 700; color: var(--cyan); }
     .card a { color: var(--cyan); text-decoration: none; }
+    .bg-title { font-size: 18px; font-weight: 800; display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+    .bg-link { display: flex; gap: 8px; align-items: center; padding: 8px 0; border-top: 1px solid #183152; font-size: 14px; }
+    .bg-ic { width: 20px; text-align: center; flex: none; }
     .small { font-size: 12px; color: var(--muted); line-height: 1.5; }
     .err { color: var(--red); font-size: 14px; margin-top: 8px; }
   </style>
@@ -492,6 +495,7 @@
 
     box.appendChild(buildCompare(d));
     const ac = el("div", "card"); ac.id = "aisCard"; box.appendChild(ac); renderAis(d);
+    const bc = el("div", "card"); bc.id = "bgCard"; box.appendChild(bc); renderBackground(d);
 
     const sc = el("div", "card");
     sc.appendChild(el("h2", null, "CAPTURED WITH THE PHOTO"));
@@ -616,6 +620,70 @@
     card.appendChild(nearbyPicker(d.id, a));
     const nb = el("button", "btn", "It's not on AIS"); nb.style.marginTop = "8px"; nb.onclick = () => aisChoose(d.id, null);
     card.appendChild(nb);
+  }
+
+  // ---------- background lookup (web) ----------
+  const LINK_ICON = { youtube: "▶", blog: "✎", social: "◎", listing: "🏷", registry: "⚓", article: "📰", other: "🔗" };
+  function knownName(d) {
+    const ch = (d.ais || {}).user_choice;
+    if (ch && !ch.none && ch.name) return ch.name;
+    return ((d.ai || {}).visible_name || "").trim();
+  }
+  let lookupTimer = null;
+  async function startLookup(id, name) {
+    const res = await fetch("/boats/sightings/" + id + "/lookup", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name }) }).catch(() => null);
+    const d = res ? await res.json().catch(() => null) : null;
+    if (!res || !res.ok) { alert((d && d.detail) || "Couldn't start the lookup."); return; }
+    renderBackground(d);
+    clearInterval(lookupTimer);
+    const t0 = Date.now();
+    lookupTimer = setInterval(async () => {
+      let x;
+      try { x = await (await fetch("/boats/sightings/" + id + "?x=" + Date.now())).json(); } catch (e) { return; }
+      if ((x.lookup || {}).status !== "pending" || Date.now() - t0 > 180000) { clearInterval(lookupTimer); renderBackground(x); }
+    }, 3000);
+  }
+
+  function renderBackground(d) {
+    const card = document.getElementById("bgCard");
+    if (!card) return;
+    card.replaceChildren(el("h2", null, "BACKGROUND"));
+    const lk = d.lookup || {};
+    if (lk.status === "pending") {
+      card.appendChild(el("div", "small", "🔎 Searching the web for “" + (lk.name || "") + "”… (usually 15–30 s)"));
+      return;
+    }
+    if (lk.status === "done" && lk.result) {
+      const r = lk.result;
+      if (!r.found) card.appendChild(el("div", "small", "Nothing convincing found online for “" + (lk.meta || {}).name + "”."));
+      else {
+        const model = r.model && r.model !== "unknown" ? r.model : "";
+        const builder = r.builder && r.builder !== "unknown" && !model.toLowerCase().startsWith(r.builder.split(" ")[0].toLowerCase()) ? r.builder : "";
+        const title = [r.year || "", builder, model].filter(Boolean).join(" ");
+        const head = el("div", "bg-title"); head.append(title || ((lk.meta || {}).name || "This boat"));
+        head.appendChild(el("span", "conf " + r.confidence, r.confidence.toUpperCase()));
+        card.appendChild(head);
+        const facts = [r.hull_type && r.hull_type !== "unknown" ? r.hull_type : "", r.length_ft ? r.length_ft + " ft" : ""].filter(Boolean).join(" · ");
+        if (facts) card.appendChild(el("div", "small", facts));
+        card.appendChild(el("p", "desc", r.summary));
+        if (r.match_notes) card.appendChild(el("p", "small", "Same boat? " + r.match_notes));
+        for (const l of r.links || []) {
+          const a = el("a", "bg-link"); a.href = l.url; a.target = "_blank"; a.rel = "noopener noreferrer";
+          a.append(el("span", "bg-ic", LINK_ICON[l.kind] || "🔗"), el("span", null, l.title));
+          card.appendChild(a);
+        }
+      }
+      const m = lk.meta || {};
+      card.appendChild(el("div", "small", `Searched the web (${m.searches || 0} searches · ${m.cost_usd != null ? Math.round(m.cost_usd * 100) + "¢" : ""})`));
+      return;
+    }
+    if (lk.status === "error") card.appendChild(el("div", "err", lk.error || "Lookup failed."));
+    card.appendChild(el("div", "small", "Look this boat up online - its builder, year, and things like the owners' YouTube channel or a past sale listing."));
+    const inp = el("input"); inp.type = "text"; inp.placeholder = "Boat name, e.g. as painted on the hull"; inp.maxLength = 60; inp.value = knownName(d);
+    inp.style.marginTop = "8px";
+    const go = el("button", "btn", "🔎 Look up online (~10–15¢)"); go.style.marginTop = "8px";
+    go.onclick = () => { if (inp.value.trim().length >= 2) startLookup(d.id, inp.value.trim()); else inp.focus(); };
+    card.append(inp, go);
   }
 
   // ---------- comparison: "which is it?" ----------

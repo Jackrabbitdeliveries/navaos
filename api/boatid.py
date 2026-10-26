@@ -19,7 +19,7 @@ from fastapi.responses import FileResponse, HTMLResponse
 from pydantic import BaseModel
 
 from api.nav import with_nav
-from navaos_boatid import capture, feeds, identify, library, reveal, store
+from navaos_boatid import capture, feeds, identify, library, lookup, reveal, store
 
 router = APIRouter(prefix="/boats", tags=["boat-id"])
 
@@ -104,7 +104,7 @@ def create_sighting(req: NewSighting):
 def _public(row: dict) -> dict:
     """What the page needs - no client id, no file path."""
     d = {k: row.get(k) for k in ("id", "created_at", "source", "taken_at", "img_w", "img_h", "tap_x", "tap_y",
-                                 "sensors", "guess", "ai_status", "ai", "ai_meta", "ai_error", "confirm", "ais")}
+                                 "sensors", "guess", "ai_status", "ai", "ai_meta", "ai_error", "confirm", "ais", "lookup")}
     d["feed"] = feeds.public(row["feed_id"]) if row.get("feed_id") else None   # incl. the credit to show
     return d
 
@@ -283,6 +283,32 @@ def ais_reset(sid: str):
         store.update(sid, ais=res)
     except Exception as e:
         print(f"BOATID-AIS-RESET-FAILED {sid}: {e!r}", flush=True)
+    return _public(store.get(sid))
+
+
+class LookupRequest(BaseModel):
+    name: str
+
+
+@router.post("/sightings/{sid}/lookup")
+def start_lookup(sid: str, req: LookupRequest):
+    """Search the web for what's publicly known about a named boat (on demand -
+    it costs ~5-20 cents, inside the daily budget)."""
+    row = store.get(sid)
+    if row is None:
+        raise HTTPException(404, "No such sighting")
+    name = " ".join(req.name.split())[:60]
+    if len(name) < 2:
+        raise HTTPException(400, "Give the boat's name.")
+    if (row.get("lookup") or {}).get("status") == "pending":
+        return _public(row)
+    if not identify.AI_ENABLED:
+        raise HTTPException(503, "AI is disabled on this instance.")
+    from navaos_boatid import budget
+    ok, spent, cap = budget.allowed()
+    if not ok:
+        raise HTTPException(429, f"Daily AI budget reached (${spent:.2f} of ${cap:.2f}) - resets at midnight.")
+    lookup.start(sid, name)
     return _public(store.get(sid))
 
 

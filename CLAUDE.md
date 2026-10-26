@@ -361,6 +361,22 @@ Legacy path (`ChannelConfig.receiver="rtl_fm"`): rtl_fm → AdaptiveSquelch
     "capturing now" / captured today; My IDs has ALL · MY SNAPS · 📹 BRIDGE CAM
     chips (`/boats/log#bridge`). Logs `BRIDGEWATCH-WINDOW/CAPTURE/AIS-SKIPPED`.
     Limits: boats without AIS never trigger; no fresh AIS while someone listens.
+  - **Background lookup (2026-10-26):** `navaos_boatid/lookup.py` — on demand
+    ("🔎 Look up online" in the result screen's BACKGROUND card; name prefilled
+    from the AIS answer or the hull name, editable) → `POST
+    /boats/sightings/{id}/lookup {name}` (budget-checked, 503 if AI disabled) →
+    background Opus 5 call with the `web_search_20260209` server tool (max 4
+    searches, effort low, pause_turn resumed ≤3×, JSON schema: found,
+    confidence, summary, builder/model/year/length_ft/hull_type, match_notes,
+    links {title,url,kind}; https links only, ≤8). Prompt forbids personal
+    details about owners/crew — boat + its public channels only. Stored in the
+    `lookup` column {status pending|done|error, result, meta{cost_usd, searches,
+    seconds, request_ids, name}, at}; page polls every 3 s. Cost = tokens + $0.01
+    per search, counted in the daily cap on the day it ran. **Test "ego domi":**
+    1st try 5 searches $0.32, no model → tuned prompt → 2 searches, **$0.12**,
+    17 s: 2003 Royal Cape 42/45 catamaran, 44 ft, the owners' YouTube channel,
+    a listing, VesselFinder (MMSI 368396740, nameless in our AIS DB).
+    Idea: fill nameless AIS entries from lookups.
   - ⚠️ **Tests / spare instances: set `NAVAOS_BRIDGE_WATCH=0`** too.
   - ⚠️ **Tests / spare instances: also set `NAVAOS_BOATID_AI=0`** (the API key is
     global; without it every test sighting is a real, billed Opus call — this
