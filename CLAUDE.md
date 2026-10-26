@@ -302,8 +302,26 @@ Legacy path (`ChannelConfig.receiver="rtl_fm"`): rtl_fm → AdaptiveSquelch
     Sightings: `source` phone|upload|**feed** + `feed_id` column (auto-added to
     older DBs); API returns `feed` (with credit); `GET /boats/feeds`. Result
     screen + log show "📹 Image: See St. Augustine · Bridge of Lions live cam".
-    **More cities = more registry entries.** Frame capture itself not built
-    yet (awaiting: YouTube vs. direct camera feed, camera position/direction).
+    **More cities = more registry entries.**
+  - **Bridge cam facts (2026-10-26):** camera **pans and zooms on a schedule**
+    (channel description): 08:00–19:45 it **zooms on the drawbridge every
+    half-hour for 10 min** (= the bridge's :00/:30 openings), otherwise pans
+    between the bridge (north) and the lighthouse (east); 20:00–08:00 night
+    tour alternates waterfront/lighthouse every 10 min. View of the bridge is
+    from the waterfront south of it, looking north, with the south mooring
+    field (catamarans etc.) in the foreground; legible hull names ("ego domi",
+    not on AIS). Overlay: AccuWeather box top-left with a clock that matched
+    the Pi to the minute → YouTube delay < 1 min.
+  - **Frame capture works (2026-10-26):** Kevin chose YouTube for now (will ask
+    the owner about a direct camera feed). `~/src/ytdlp-venv/bin/yt-dlp` (own
+    venv, v2026.10.21) → `-g -f 270` gives the 1920×1080 video-only HLS URL in
+    ~2 s; `ffmpeg -i URL -frames:v 1` grabs a still in ~4 s (formats 269–270,
+    144p–1080p). URLs expire; re-resolve each session. YouTube may block it
+    some day — expect occasional breakage.
+  - Proposed **Bridge watch v1** (not built): only during the :00–:10/:30–:40
+    daytime zoom windows, grab stills every few seconds; keep + identify
+    (Opus) only when AIS shows a boat at the bridge (moving, ~≤200 m); request
+    AIS bursts during windows; auto-label from AIS; credited gallery + My IDs.
   - ⚠️ **Tests / spare instances: also set `NAVAOS_BOATID_AI=0`** (the API key is
     global; without it every test sighting is a real, billed Opus call — this
     happened twice on 2026-10-25/26, ~4¢ each).
