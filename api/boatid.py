@@ -146,6 +146,13 @@ def grab_frame(feed_id: str):
             "zoomed_on_bridge": feeds.in_zoom_window(feeds.get(feed_id), t)}
 
 
+@router.get("/watch")
+def watch_status():
+    """Bridge watch: is it in a bridge window, when's the next, what it caught today."""
+    from navaos_boatid.watch import bridge_watch
+    return bridge_watch.status()
+
+
 @router.get("/budget")
 def ai_budget():
     from navaos_boatid import budget

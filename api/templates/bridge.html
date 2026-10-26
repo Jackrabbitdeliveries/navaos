@@ -30,6 +30,9 @@
     .credit { display: flex; justify-content: space-between; gap: 8px; font-size: 12px; color: var(--muted); margin: 6px 2px 0; flex-wrap: wrap; }
     .idbtn { display: block; text-align: center; text-decoration: none; font-size: 16px; font-weight: 700; color: #07111f; background: var(--cyan);
              border-radius: 12px; padding: 12px 16px; margin-top: 10px; }
+    .watchline { font-size: 13px; color: var(--muted); margin: 8px 2px 0; }
+    .watchline a { color: var(--cyan); text-decoration: none; }
+    .watchline .live { color: var(--green); font-weight: 700; }
     .credit a, .linkbtn { color: var(--cyan); text-decoration: none; background: none; border: none; font: inherit; padding: 0; cursor: pointer; }
 
     .grid { display: grid; grid-template-columns: 1fr; gap: 12px; margin-top: 12px; }
@@ -85,6 +88,7 @@
       <button class="linkbtn" onclick="changeVideo()">Stream moved? Change link</button>
     </div>
     <a class="idbtn" href="/boats/snap?feed=bridge-of-lions">📷 Identify a boat in this view</a>
+    <div class="watchline" id="watchLine"></div>
     <div id="msg" class="msg"></div>
 
     <div class="grid">
@@ -305,7 +309,20 @@
   }
   clip.onended = () => document.querySelectorAll(".tx-play").forEach(x => { x.textContent = "▶"; x.classList.remove("on"); });
 
-  loadCam(); pollStatus(); loadBoats(); loadTx();
+  // ---------- Bridge watch status ----------
+  async function loadWatch() {
+    let w;
+    try { w = await (await fetch("/boats/watch?x=" + Date.now())).json(); } catch (e) { return; }
+    const line = document.getElementById("watchLine"); line.replaceChildren();
+    if (!w.enabled) return;
+    if (w.in_window) line.appendChild(el("span", "live", "● Bridge watch is capturing boats now"));
+    else if (w.next_window) line.append("Bridge watch: next bridge close-up at " + new Date(w.next_window * 1000).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }));
+    line.append(" · " + w.captured_today + " boat" + (w.captured_today === 1 ? "" : "s") + " captured today · ");
+    const a = el("a", null, "See them →"); a.href = "/boats/log#bridge"; line.appendChild(a);
+  }
+
+  loadCam(); pollStatus(); loadBoats(); loadTx(); loadWatch();
+  setInterval(loadWatch, 30000);
   setInterval(pollStatus, 3000);
   setInterval(loadBoats, 20000);
   setInterval(loadTx, 15000);

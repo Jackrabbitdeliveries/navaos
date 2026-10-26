@@ -24,6 +24,10 @@
     .back { color: var(--cyan); text-decoration: none; font-size: 14px; font-weight: 600; padding: 6px 10px; border: 1px solid var(--line); border-radius: 999px; white-space: nowrap; }
     .snapbtn { display: block; text-align: center; text-decoration: none; font-size: 16px; font-weight: 700; color: var(--bg); background: var(--cyan);
                border-radius: 12px; padding: 13px 16px; margin: 6px 0 4px; }
+    .chips { display: flex; gap: 6px; margin: 10px 0 0; flex-wrap: wrap; }
+    .chip { font: inherit; font-size: 13px; font-weight: 700; color: var(--muted); background: var(--panel); border: 1px solid var(--line);
+            border-radius: 999px; padding: 7px 12px; cursor: pointer; }
+    .chip.on { color: var(--bg); background: var(--cyan); border-color: var(--cyan); }
     .summary { font-size: 13px; color: var(--muted); margin: 10px 2px 4px; }
     .day { font-size: 12px; letter-spacing: 0.18em; color: var(--muted); font-weight: 700; margin: 20px 2px 8px; }
     a.item { display: flex; gap: 12px; align-items: center; text-decoration: none; color: inherit; background: var(--panel);
@@ -48,6 +52,7 @@
       <a class="back" href="/radio/player">← Player</a>
     </div>
     <a class="snapbtn" href="/boats/snap">📷 Snap a sailboat</a>
+    <div class="chips" id="chips"></div>
     <div class="summary" id="summary"></div>
     <div id="list"><div class="empty">Loading…</div></div>
   </div>
@@ -79,9 +84,22 @@
     return d.toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" }).toUpperCase();
   }
 
+  // filter: all | mine (phone/upload) | bridge (camera feed); "#bridge" in the link preselects it
+  let view = location.hash === "#bridge" ? "bridge" : "all";
+  function drawChips() {
+    const box = document.getElementById("chips"); box.replaceChildren();
+    for (const [k, lab] of [["all", "ALL"], ["mine", "MY SNAPS"], ["bridge", "📹 BRIDGE CAM"]]) {
+      const b = el("button", "chip" + (view === k ? " on" : ""), lab);
+      b.onclick = () => { view = k; drawChips(); load(); };
+      box.appendChild(b);
+    }
+  }
+  drawChips();
+
   async function load() {
     let list;
     try { list = await (await fetch("/boats/sightings?limit=200&x=" + Date.now())).json(); } catch (e) { return; }
+    list = list.filter(s => view === "all" || (view === "bridge" ? s.source === "feed" : s.source !== "feed"));
     const box = document.getElementById("list"); box.replaceChildren();
     if (!list.length) { box.appendChild(el("div", "empty", "No boat IDs yet - snap your first sailboat.")); return; }
     let totPts = 0, totTried = 0, day = null;
@@ -113,7 +131,10 @@
       const g = s.guess || {};
       const yours = [g.model, LABEL[g.rig] !== "?" ? LABEL[g.rig] : null, LABEL[g.size] !== "?" ? LABEL[g.size] : null].filter(Boolean).join(", ");
       main.append(what, el("div", "sub", t + (yours ? " · you said: " + yours : "") + (s.source === "upload" ? " · uploaded" : "")));
-      if (s.feed) main.appendChild(el("div", "sub", "📹 " + s.feed.credit + " · " + s.feed.name));
+      if (s.feed) {
+        const auto = s.sensors && s.sensors.auto === "bridge-watch";
+        main.appendChild(el("div", "sub", "📹 " + s.feed.credit + " · " + s.feed.name + (auto ? " · auto" + (s.sensors.trigger_name ? " (AIS: " + s.sensors.trigger_name + ")" : "") : "")));
+      }
       const sco = el("div", "score " + (!sc || !sc.tried ? "none" : sc.pts === sc.tried ? "full" : "part"), sc && sc.tried ? sc.pts + "/" + sc.tried : "–");
       sco.appendChild(el("small", null, "SCORE"));
       a.append(img, main, sco);

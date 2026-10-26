@@ -335,10 +335,20 @@ Legacy path (`ChannelConfig.receiver="rtl_fm"`): rtl_fm → AdaptiveSquelch
     Boat ID Claude calls (kit.json `ai_daily_cap_usd`), spend computed from
     stored token counts × list price per model; `identify.start()` refuses with
     "Daily AI budget reached" when spent + $0.05 would exceed it. `GET /boats/budget`.
-  - Proposed **Bridge watch v1** (not built): only during the :00–:10/:30–:40
-    daytime zoom windows, grab stills every few seconds; keep + identify
-    (Opus) only when AIS shows a boat at the bridge (moving, ~≤200 m); request
-    AIS bursts during windows; auto-label from AIS; credited gallery + My IDs.
+  - **Bridge watch v1 (built 2026-10-26):** `navaos_boatid/watch.py`, thread
+    started from `main.py` lifespan. Every 5 s; only inside
+    `feeds.in_zoom_window()`; requests AIS bursts (`control.ais_now`, client
+    "bridge-watch") at window start and every 120 s (skipped if someone
+    listens / radio busy — note ais_now counts as activity for the 20-min
+    default-scan clock); triggers on AIS boats with a fix <180 s old, moving,
+    ≤250 m from the watch point, not Nava; one grab per tick, each boat once
+    per window, ≤6 per window → credited feed sighting (client "bridge-watch",
+    `sensors.auto="bridge-watch"`, trigger mmsi/name/sog) + identify (budget)
+    + reveal. `GET /boats/watch` status; Bridge page shows next close-up /
+    "capturing now" / captured today; My IDs has ALL · MY SNAPS · 📹 BRIDGE CAM
+    chips (`/boats/log#bridge`). Logs `BRIDGEWATCH-WINDOW/CAPTURE/AIS-SKIPPED`.
+    Limits: boats without AIS never trigger; no fresh AIS while someone listens.
+  - ⚠️ **Tests / spare instances: set `NAVAOS_BRIDGE_WATCH=0`** too.
   - ⚠️ **Tests / spare instances: also set `NAVAOS_BOATID_AI=0`** (the API key is
     global; without it every test sighting is a real, billed Opus call — this
     happened twice on 2026-10-25/26, ~4¢ each).

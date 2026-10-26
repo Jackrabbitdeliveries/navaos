@@ -6,11 +6,13 @@ from api.stream import router as stream_router
 from api.boatid import router as boatid_router
 from navaos_audio.channel_manager import channel_manager
 from navaos_audio.transcriber import transcriber
+from navaos_boatid.watch import bridge_watch
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     transcriber.start()   # background speech-to-text of recordings (NAVAOS_STT=0 disables)
+    bridge_watch.start()  # automatic Boat ID from the Bridge of Lions cam (NAVAOS_BRIDGE_WATCH=0 disables)
     yield
     channel_manager.shutdown()
 
