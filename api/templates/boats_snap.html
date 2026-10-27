@@ -51,6 +51,12 @@
     .credit-line a { color: var(--cyan); text-decoration: none; }
     .marker { position: absolute; width: 34px; height: 34px; margin: -17px 0 0 -17px; border: 3px solid var(--amber); border-radius: 50%;
               box-shadow: 0 0 0 2px rgba(0,0,0,0.6); pointer-events: none; }
+    .marker.box { margin: 0; border-radius: 4px; border-width: 2px; }
+    .zoombox { touch-action: none; cursor: grab; user-select: none; -webkit-user-select: none; }
+    .zoombox img { position: absolute; left: 0; top: 0; width: 100%; height: 100%; transform-origin: 0 0; max-width: none; pointer-events: none; }
+    .zoom-ctl { display: flex; gap: 8px; margin-top: 8px; }
+    .zoom-ctl .btn { margin: 0; }
+    .zoom-ctl .sq { flex: 0 0 52px; font-size: 22px; padding: 6px 0; }
     .tap-hint { position: absolute; left: 0; right: 0; bottom: 10px; text-align: center; pointer-events: none; }
     .tap-hint span { background: rgba(7,17,31,0.8); padding: 5px 10px; border-radius: 999px; font-size: 13px; }
 
@@ -170,6 +176,15 @@
         <img id="shot" alt="Your photo">
         <div id="marker" class="marker" hidden></div>
         <div class="tap-hint" id="tapHint"><span>Tap the boat you mean</span></div>
+      </div>
+      <!-- zoom in on the tapped spot and frame the boat (2026-10-27) -->
+      <div id="zoomWrap" hidden>
+        <div class="viewer zoombox" id="zoomBox"><img id="zoomImg" alt="Zoomed view"></div>
+        <div class="small" style="margin-top:6px">Frame the boat you mean: drag to move, pinch or −/+ to zoom, tap to centre.</div>
+        <div class="zoom-ctl">
+          <button class="btn sq" onclick="zoomBy(1/1.5)">−</button><button class="btn sq" onclick="zoomBy(1.5)">+</button>
+          <button class="btn" onclick="closeZoom(false)">Cancel</button><button class="btn primary" onclick="closeZoom(true)">✓ That's the boat</button>
+        </div>
       </div>
       <div class="credit-line" id="shotCredit" hidden></div>
       <div class="card">
@@ -305,6 +320,7 @@
   const MAX_SIDE = 1568;   // Claude's recommended image size; also strips all photo metadata
   let shot = null;          // { dataUrl, w, h, source, taken_at, sensors }
   let tap = null, guess = { hull: null, rig: null, size: null };
+  let frame = null;         // { x, y, w, h } 0..1 - the box the user zoomed to; null = just a tap / nothing
 
   function toJpeg(source, sw, sh) {
     const k = Math.min(1, MAX_SIDE / Math.max(sw, sh));
@@ -357,7 +373,8 @@
     }
   }
   function openGuess() {
-    tap = null; guess = { hull: null, rig: null, size: null };
+    tap = null; frame = null; guess = { hull: null, rig: null, size: null };
+    $("zoomWrap").hidden = true; $("shotBox").hidden = false;
     $("retakeBtn").textContent = shot.source === "feed" ? "↻ Grab again" : shot.source === "upload" ? "Pick another" : "Retake";
     const sc = $("shotCredit"); sc.replaceChildren(); sc.hidden = !shot.feed;
     if (shot.feed) {
@@ -372,10 +389,94 @@
   }
   $("shotBox").addEventListener("click", ev => {
     const r = $("shot").getBoundingClientRect();
-    tap = { x: Math.min(1, Math.max(0, (ev.clientX - r.left) / r.width)), y: Math.min(1, Math.max(0, (ev.clientY - r.top) / r.height)) };
-    const m = $("marker"); m.style.left = (tap.x * 100) + "%"; m.style.top = (tap.y * 100) + "%"; m.hidden = false;
-    $("tapHint").hidden = true;
+    openZoom((ev.clientX - r.left) / r.width, (ev.clientY - r.top) / r.height);
   });
+
+  // ---------- zoom + frame ----------
+  // The zoom view has the photo's aspect ratio; showing a 1/z slice of it in
+  // both directions, top-left at (zv.x, zv.y). What's visible = the frame.
+  const ZMIN = 1, ZMAX = 6;
+  let zv = { z: 3, x: 0, y: 0 };
+  const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
+  function zoomApply() {
+    zv.z = clamp(zv.z, ZMIN, ZMAX);
+    zv.x = clamp(zv.x, 0, 1 - 1 / zv.z); zv.y = clamp(zv.y, 0, 1 - 1 / zv.z);
+    const b = $("zoomBox"), W = b.clientWidth, H = b.clientHeight;
+    $("zoomImg").style.transform = `translate(${-zv.x * W * zv.z}px, ${-zv.y * H * zv.z}px) scale(${zv.z})`;
+  }
+  function zoomAt(z, cx, cy) {   // new zoom, keeping the point (cx, cy) of the photo at the same place on screen
+    const fx = (cx - zv.x) * zv.z, fy = (cy - zv.y) * zv.z;   // 0..1 within the view
+    zv.z = clamp(z, ZMIN, ZMAX); zv.x = cx - fx / zv.z; zv.y = cy - fy / zv.z; zoomApply();
+  }
+  function zoomBy(k) { zoomAt(zv.z * k, zv.x + 0.5 / zv.z, zv.y + 0.5 / zv.z); }
+  function openZoom(cx, cy) {
+    $("zoomBox").style.aspectRatio = shot.w + " / " + shot.h;
+    $("zoomImg").src = shot.dataUrl;
+    $("shotBox").hidden = true; $("zoomWrap").hidden = false;
+    zv.z = frame ? clamp(1 / frame.w, ZMIN, ZMAX) : 3;
+    zv.x = clamp(cx, 0, 1) - 0.5 / zv.z; zv.y = clamp(cy, 0, 1) - 0.5 / zv.z;
+    requestAnimationFrame(zoomApply);   // after layout, so the box has its size
+  }
+  function closeZoom(use) {
+    if (use) {
+      const w = 1 / zv.z;
+      frame = { x: zv.x, y: zv.y, w, h: w };
+      tap = { x: zv.x + w / 2, y: zv.y + w / 2 };
+      placeMarker($("marker"), frame, tap);
+      $("tapHint").hidden = true;
+    }
+    $("zoomWrap").hidden = true; $("shotBox").hidden = false;
+  }
+  function placeMarker(m, f, t) {
+    if (f) {
+      m.className = "marker box";
+      Object.assign(m.style, { left: f.x * 100 + "%", top: f.y * 100 + "%", width: f.w * 100 + "%", height: f.h * 100 + "%" });
+    } else if (t) {
+      m.className = "marker";
+      Object.assign(m.style, { left: t.x * 100 + "%", top: t.y * 100 + "%", width: "", height: "" });
+    } else { m.hidden = true; return; }
+    m.hidden = false;
+  }
+  (function () {   // drag to pan, pinch to zoom, tap to centre
+    const box = $("zoomBox"), pts = new Map();
+    let moved = 0, pinch0 = null;
+    const local = (e) => { const r = box.getBoundingClientRect(); return { x: (e.clientX - r.left) / r.width, y: (e.clientY - r.top) / r.height }; };
+    box.addEventListener("pointerdown", e => { box.setPointerCapture(e.pointerId); pts.set(e.pointerId, local(e)); if (pts.size === 1) moved = 0; pinch0 = null; });
+    box.addEventListener("pointermove", e => {
+      if (!pts.has(e.pointerId)) return;
+      const p = local(e), prev = pts.get(e.pointerId);
+      pts.set(e.pointerId, p);
+      if (pts.size === 1) {
+        moved += Math.abs(p.x - prev.x) * box.clientWidth + Math.abs(p.y - prev.y) * box.clientHeight;
+        zv.x -= (p.x - prev.x) / zv.z; zv.y -= (p.y - prev.y) / zv.z; zoomApply();
+      } else if (pts.size === 2) {
+        moved = 99;
+        const [a, b] = [...pts.values()];
+        const d = Math.hypot((a.x - b.x) * box.clientWidth, (a.y - b.y) * box.clientHeight);
+        const mid = { x: zv.x + ((a.x + b.x) / 2) / zv.z, y: zv.y + ((a.y + b.y) / 2) / zv.z };
+        if (pinch0) zoomAt(pinch0.z * d / pinch0.d, mid.x, mid.y);
+        else pinch0 = { d: Math.max(d, 1), z: zv.z };
+      }
+    });
+    const up = e => {
+      const p = pts.get(e.pointerId);
+      pts.delete(e.pointerId);
+      if (pts.size < 2) pinch0 = null;
+      if (p && pts.size === 0 && moved < 8) {   // a tap: centre on that spot
+        zv.x = zv.x + p.x / zv.z - 0.5 / zv.z; zv.y = zv.y + p.y / zv.z - 0.5 / zv.z; zoomApply();
+      }
+    };
+    box.addEventListener("pointerup", up); box.addEventListener("pointercancel", up);
+    window.addEventListener("resize", () => { if (!$("zoomWrap").hidden) zoomApply(); });
+  })();
+
+  function cropJpeg() {   // the framed box, cut from the full-size image (no upscaling)
+    const img = $("zoomImg"), sw = img.naturalWidth, sh = img.naturalHeight;
+    const c = document.createElement("canvas");
+    c.width = Math.max(1, Math.round(frame.w * sw)); c.height = Math.max(1, Math.round(frame.h * sh));
+    c.getContext("2d").drawImage(img, frame.x * sw, frame.y * sh, c.width, c.height, 0, 0, c.width, c.height);
+    return c.toDataURL("image/jpeg", 0.9);
+  }
   // Camera-feed stills: "Grab again" takes a fresh frame; phone photos go back to the camera.
   function retake() {
     if (shot && shot.source === "feed") { shot = null; grabFeed(); return; }
@@ -388,6 +489,7 @@
     const btn = $("goBtn"); btn.disabled = true; $("submitErr").textContent = "";
     const body = { image: shot.dataUrl, source: shot.source, feed_id: shot.feed ? shot.feed.id : null, client: clientId, taken_at: shot.taken_at,
       img_w: shot.w, img_h: shot.h, tap_x: tap && tap.x, tap_y: tap && tap.y, sensors: shot.sensors,
+      crop: frame, crop_image: frame ? cropJpeg() : null,
       guess: { hull: guess.hull || "unknown", rig: guess.rig || "unknown", size: guess.size || "unknown", model: $("gModel").value.trim() } };
     let res;
     try { res = await fetch("/boats/sightings", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }); }
@@ -402,8 +504,7 @@
   let pollTimer = null;
   function showResult(id) {
     $("resShot").src = shot ? shot.dataUrl : "/boats/photo/" + id + ".jpg";
-    const m = $("resMarker");
-    if (tap) { m.style.left = (tap.x * 100) + "%"; m.style.top = (tap.y * 100) + "%"; m.hidden = false; } else m.hidden = true;
+    placeMarker($("resMarker"), frame, tap);
     $("thinking").hidden = false; $("result").hidden = true; $("result").replaceChildren();
     show("stResult");
     try { history.replaceState(null, "", "#" + id); } catch (e) {}
@@ -445,9 +546,8 @@
   function renderResult(d) {
     $("thinking").hidden = true;
     renderCredit(d);
-    if (d.tap_x != null && d.tap_y != null) {   // also restores the marker when reopened from a link
-      const m = $("resMarker"); m.style.left = (d.tap_x * 100) + "%"; m.style.top = (d.tap_y * 100) + "%"; m.hidden = false;
-    }
+    if (d.crop || (d.tap_x != null && d.tap_y != null))   // also restores the marker when reopened from a link
+      placeMarker($("resMarker"), d.crop, { x: d.tap_x, y: d.tap_y });
     const box = $("result"); box.hidden = false; box.replaceChildren();
     if (d.ai_status !== "done" || !d.ai) {
       const c = el("div", "card"); c.append(el("h2", null, "NO ANSWER"), el("div", "err", d.ai_error || "The AI didn't answer in time - try again."));
@@ -879,7 +979,7 @@
   // Reopen a result from its link (#id)
   (function () {
     const id = location.hash.slice(1);
-    if (/^[A-Za-z0-9_-]{12}$/.test(id)) { tap = null; showResult(id); }
+    if (/^[A-Za-z0-9_-]{12}$/.test(id)) { tap = null; frame = null; showResult(id); }
   })();
 </script>
 </body>

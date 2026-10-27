@@ -12,7 +12,11 @@ AIS reveal then run on it, so it shows up in My boat IDs.
 Boats without AIS can't trigger it (v1). With one dongle, AIS bursts don't
 run while someone is listening - then there may be nothing fresh to trigger on.
 
-Env: NAVAOS_BRIDGE_WATCH=0 disables (tests and spare instances MUST set it).
+PAUSED 2026-10-27 (Kevin): every capture so far was triggered by SAPPHIRE, a
+moored boat whose AIS drifts to 2+ kn on the mooring, and with no aim point
+the AI described a foreground catamaran anyway. Off unless
+NAVAOS_BRIDGE_WATCH=1. Possible redesign: a "span watcher" that checks
+frames for a boat inside the bridge opening (see CLAUDE.md).
 """
 from __future__ import annotations
 
@@ -25,7 +29,7 @@ from typing import Optional
 
 from . import capture, feeds, identify, reveal, store
 
-ENABLED = os.environ.get("NAVAOS_BRIDGE_WATCH", "1") != "0"
+ENABLED = os.environ.get("NAVAOS_BRIDGE_WATCH", "0") == "1"
 FEED_ID = feeds.DEFAULT_FEED
 CLIENT = "bridge-watch"
 TICK_S = 5

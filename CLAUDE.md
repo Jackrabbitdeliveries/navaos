@@ -348,6 +348,28 @@ Legacy path (`ChannelConfig.receiver="rtl_fm"`): rtl_fm → AdaptiveSquelch
     Boat ID Claude calls (kit.json `ai_daily_cap_usd`), spend computed from
     stored token counts × list price per model; `identify.start()` refuses with
     "Daily AI budget reached" when spent + $0.05 would exceed it. `GET /boats/budget`.
+  - **Bridge watch PAUSED 2026-10-27 (Kevin)** — now off unless
+    `NAVAOS_BRIDGE_WATCH=1`. Why: all 7 automatic captures (10-26/27) were
+    triggered by **SAPPHIRE**, moored near the bridge, whose AIS drifts to
+    2+ kn on the mooring; with no aim point the AI then described a foreground
+    catamaran. Also: the moored boats in front of the bridge block the view,
+    and the bridge opens ~3–4 min *after* :00/:30 (boats wait on the far side
+    meanwhile). Kevin: focus on the user choosing the boat. If revived, make it
+    a "span watcher": crop the opening between the towers, grab frames ~:02–:10,
+    cheap local change-detect, then a cheap vision check "boat in the spans?
+    where?", and only then a full identify aimed at that boat; AIS only as a
+    label, not the trigger.
+  - **Zoom-to-frame (2026-10-27, Kevin's request):** on the guess screen a tap
+    opens a zoom view (3×, 1–6×; drag to pan, pinch or −/+, tap to centre) of
+    the photo; "✓ That's the boat" saves the visible box as `crop` {x,y,w,h}
+    (0..1) and the page cuts that box from the full-size image as
+    `crop_image` (no upscaling). Server stores `<id>_crop.jpg` next to the photo
+    (`store.crop_path`), column `crop` (auto-added), tap = box centre (the AIS
+    reveal aims through it). `identify` then sends **two images: close-up
+    first, then the whole photo** for context, with the box's position in the
+    prompt (≈+0.5–1¢ per ID). Result screen and guess screen draw the box
+    instead of the circle; My IDs thumbnails use the close-up.
+    `GET /boats/photo/{id}/crop.jpg`. Works for phone, upload and feed photos.
   - **Bridge watch v1 (built 2026-10-26):** `navaos_boatid/watch.py`, thread
     started from `main.py` lifespan. Every 5 s; only inside
     `feeds.in_zoom_window()`; requests AIS bursts (`control.ais_now`, client

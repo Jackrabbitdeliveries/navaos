@@ -85,9 +85,16 @@ def _client() -> anthropic.Anthropic:
     return anthropic.Anthropic(api_key=KEY_FILE.read_text().strip(), timeout=120.0, max_retries=2)
 
 
-def _prompt(row: dict) -> str:
+def _prompt(row: dict, framed: bool = False) -> str:
     parts = []
-    if row.get("tap_x") is not None and row.get("tap_y") is not None:
+    if framed:
+        c = row["crop"]
+        parts.append(f"The user zoomed in and framed the boat they mean: the first image is that close-up, cut from "
+                     f"the second (whole) image at {c['x'] * 100:.0f}-{(c['x'] + c['w']) * 100:.0f}% from the left and "
+                     f"{c['y'] * 100:.0f}-{(c['y'] + c['h']) * 100:.0f}% from the top. Identify the boat in the middle of "
+                     "the close-up; use the whole image only for context (scale, other boats). If the close-up holds "
+                     "several boats, say so in notes.")
+    elif row.get("tap_x") is not None and row.get("tap_y") is not None:
         parts.append(f"The user tapped the boat they mean at {row['tap_x'] * 100:.0f}% from the left and "
                      f"{row['tap_y'] * 100:.0f}% from the top of the image. Identify that boat; if several boats "
                      "are near that point, say so in notes.")
@@ -109,6 +116,12 @@ def run(sid: str) -> None:
     t0 = time.time()
     try:
         img = base64.standard_b64encode(path.read_bytes()).decode()
+        content = [{"type": "image", "source": {"type": "base64", "media_type": "image/jpeg", "data": img}}]
+        crop = store.crop_path(row)
+        if crop is not None:   # close-up first, then the whole picture for context
+            cimg = base64.standard_b64encode(crop.read_bytes()).decode()
+            content.insert(0, {"type": "image", "source": {"type": "base64", "media_type": "image/jpeg", "data": cimg}})
+        content.append({"type": "text", "text": _prompt(row, framed=crop is not None)})
         resp = _client().beta.messages.create(
             model=MODEL,
             max_tokens=16000,
@@ -116,10 +129,7 @@ def run(sid: str) -> None:
             fallbacks="default",
             system=SYSTEM,
             output_config={"effort": "medium", "format": {"type": "json_schema", "schema": SCHEMA}},
-            messages=[{"role": "user", "content": [
-                {"type": "image", "source": {"type": "base64", "media_type": "image/jpeg", "data": img}},
-                {"type": "text", "text": _prompt(row)},
-            ]}],
+            messages=[{"role": "user", "content": content}],
         )
         meta = {"model": resp.model, "request_id": resp._request_id, "seconds": round(time.time() - t0, 1),
                 "input_tokens": resp.usage.input_tokens, "output_tokens": resp.usage.output_tokens}

@@ -49,12 +49,13 @@ CREATE TABLE IF NOT EXISTS sightings (
     confirm     TEXT,                   -- JSON (piece 2)
     ais         TEXT,                   -- JSON (piece 3)
     feed_id     TEXT,                   -- navaos_boatid.feeds id when source = feed
-    lookup      TEXT                    -- JSON: background web lookup (lookup.py)
+    lookup      TEXT,                   -- JSON: background web lookup (lookup.py)
+    crop        TEXT                    -- JSON {x,y,w,h} 0..1: the box the user zoomed to (close-up in <id>_crop.jpg)
 );
 CREATE INDEX IF NOT EXISTS sightings_created ON sightings(created_at);
 """
 
-JSON_COLS = ("sensors", "guess", "ai", "ai_meta", "confirm", "ais", "lookup")
+JSON_COLS = ("sensors", "guess", "ai", "ai_meta", "confirm", "ais", "lookup", "crop")
 
 
 def kit_id() -> str:
@@ -74,6 +75,8 @@ def _conn() -> sqlite3.Connection:
         c.execute("ALTER TABLE sightings ADD COLUMN feed_id TEXT")
     if "lookup" not in cols:
         c.execute("ALTER TABLE sightings ADD COLUMN lookup TEXT")
+    if "crop" not in cols:
+        c.execute("ALTER TABLE sightings ADD COLUMN crop TEXT")
     return c
 
 
@@ -85,8 +88,8 @@ def valid_id(sid: str) -> bool:
     return isinstance(sid, str) and len(sid) == ID_ALPHABET_LEN and all(ch.isalnum() or ch in "-_" for ch in sid)
 
 
-def save_photo(sid: str, jpeg: bytes) -> str:
-    rel = Path("photos") / time.strftime("%Y-%m") / f"{sid}.jpg"
+def save_photo(sid: str, jpeg: bytes, suffix: str = "") -> str:
+    rel = Path("photos") / time.strftime("%Y-%m") / f"{sid}{suffix}.jpg"
     path = DATA_DIR / rel
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_suffix(".tmp")
@@ -97,6 +100,15 @@ def save_photo(sid: str, jpeg: bytes) -> str:
 
 def photo_path(row: dict) -> Optional[Path]:
     p = (DATA_DIR / row["photo"]).resolve()
+    return p if p.is_file() and DATA_DIR.resolve() in p.parents else None
+
+
+def crop_path(row: dict) -> Optional[Path]:
+    """The user's framed close-up, saved next to the photo as <id>_crop.jpg."""
+    if not row.get("crop"):
+        return None
+    p = (DATA_DIR / row["photo"]).resolve()
+    p = p.with_name(p.stem + "_crop.jpg")
     return p if p.is_file() and DATA_DIR.resolve() in p.parents else None
 
 

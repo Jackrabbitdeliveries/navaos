@@ -57,21 +57,28 @@ class NewSighting(BaseModel):
     tap_y: float | None = None
     sensors: dict | None = None     # lat/lon/accuracy/heading/raw orientation - stored as given
     guess: dict | None = None       # hull/rig/size/model
+    crop: dict | None = None        # {x,y,w,h} 0..1 - the box the user zoomed in to frame the boat
+    crop_image: str | None = None   # that box as a JPEG data URL (cut from the full-size image)
 
 
-@router.post("/sightings")
-def create_sighting(req: NewSighting):
+def _jpeg(data_url: str) -> bytes:
     prefix = "data:image/jpeg;base64,"
-    if not req.image.startswith(prefix):
+    if not data_url.startswith(prefix):
         raise HTTPException(400, "Photo must be a JPEG.")
     try:
-        jpeg = base64.b64decode(req.image[len(prefix):], validate=True)
+        jpeg = base64.b64decode(data_url[len(prefix):], validate=True)
     except ValueError:
         raise HTTPException(400, "Photo data is corrupt.")
     if len(jpeg) > MAX_PHOTO_BYTES:
         raise HTTPException(413, "Photo is too large.")
     if not jpeg.startswith(b"\xff\xd8"):
         raise HTTPException(400, "Photo must be a JPEG.")
+    return jpeg
+
+
+@router.post("/sightings")
+def create_sighting(req: NewSighting):
+    jpeg = _jpeg(req.image)
     if req.source not in ("phone", "upload", "feed"):
         raise HTTPException(400, "Unknown source.")
     if req.source == "feed" and (not req.feed_id or feeds.get(req.feed_id) is None):
@@ -86,7 +93,21 @@ def create_sighting(req: NewSighting):
     def clamp01(v):
         return None if v is None else min(1.0, max(0.0, float(v)))
 
+    crop, crop_jpeg = None, None
+    if req.crop and req.crop_image:
+        try:
+            crop = {k: round(clamp01(req.crop[k]), 4) for k in ("x", "y", "w", "h")}
+        except (KeyError, TypeError, ValueError):
+            raise HTTPException(400, "Bad crop box.")
+        if crop["w"] <= 0 or crop["h"] <= 0:
+            raise HTTPException(400, "Bad crop box.")
+        crop_jpeg = _jpeg(req.crop_image)
+        # the tap is the middle of the framed box (the AIS reveal aims through it)
+        req.tap_x, req.tap_y = crop["x"] + crop["w"] / 2, crop["y"] + crop["h"] / 2
+
     sid = store.new_id()
+    if crop_jpeg:
+        store.save_photo(sid, crop_jpeg, "_crop")
     store.insert({
         "id": sid, "created_at": time.time(), "kit_id": store.kit_id(),
         "client": (req.client or "")[:64] or None, "source": req.source,
@@ -94,7 +115,7 @@ def create_sighting(req: NewSighting):
         "img_w": req.img_w, "img_h": req.img_h,
         "tap_x": clamp01(req.tap_x), "tap_y": clamp01(req.tap_y),
         "sensors": req.sensors, "guess": guess, "ai_status": "pending",
-        "feed_id": req.feed_id if req.source == "feed" else None,
+        "feed_id": req.feed_id if req.source == "feed" else None, "crop": crop,
     })
     identify.start(sid)
     reveal.start(sid)
@@ -104,7 +125,7 @@ def create_sighting(req: NewSighting):
 def _public(row: dict) -> dict:
     """What the page needs - no client id, no file path."""
     d = {k: row.get(k) for k in ("id", "created_at", "source", "taken_at", "img_w", "img_h", "tap_x", "tap_y",
-                                 "sensors", "guess", "ai_status", "ai", "ai_meta", "ai_error", "confirm", "ais", "lookup")}
+                                 "sensors", "guess", "ai_status", "ai", "ai_meta", "ai_error", "confirm", "ais", "lookup", "crop")}
     d["feed"] = feeds.public(row["feed_id"]) if row.get("feed_id") else None   # incl. the credit to show
     return d
 
@@ -318,4 +339,14 @@ def photo(sid: str):
     path = store.photo_path(row) if row else None
     if path is None:
         raise HTTPException(404, "No such photo")
+    return FileResponse(path, media_type="image/jpeg", headers={"Cache-Control": "private, max-age=86400"})
+
+
+@router.get("/photo/{sid}/crop.jpg")
+def photo_crop(sid: str):
+    """The close-up the user framed (404 for sightings without one)."""
+    row = store.get(sid)
+    path = store.crop_path(row) if row else None
+    if path is None:
+        raise HTTPException(404, "No close-up for this sighting")
     return FileResponse(path, media_type="image/jpeg", headers={"Cache-Control": "private, max-age=86400"})

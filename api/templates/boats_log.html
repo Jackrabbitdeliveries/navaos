@@ -109,7 +109,7 @@
       const dl = dayLabel(s.created_at);
       if (dl !== day) { day = dl; box.appendChild(el("div", "day", dl)); }
       const a = el("a", "item"); a.href = "/boats/snap#" + s.id;
-      const img = el("img", "thumb"); img.loading = "lazy"; img.alt = ""; img.src = "/boats/photo/" + s.id + ".jpg";
+      const img = el("img", "thumb"); img.loading = "lazy"; img.alt = ""; img.src = "/boats/photo/" + s.id + (s.crop ? "/crop.jpg" : ".jpg");   // the framed boat when there is one
       const main = el("div", "main");
       const what = el("div", "what");
       const ai = s.ai || {};
