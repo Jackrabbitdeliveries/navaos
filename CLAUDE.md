@@ -359,6 +359,12 @@ Legacy path (`ChannelConfig.receiver="rtl_fm"`): rtl_fm → AdaptiveSquelch
     cheap local change-detect, then a cheap vision check "boat in the spans?
     where?", and only then a full identify aimed at that boat; AIS only as a
     label, not the trigger.
+  - **MarineTraffic link (2026-11-07, Kevin's request):** the AIS REVEAL card
+    always ends with "Open MarineTraffic here (live now) ↗" →
+    `marinetraffic.com/en/ais/home/centerx:<lon>/centery:<lat>/zoom:15`, centred
+    on `map_center` (new in the sighting API: the phone's GPS, else the feed's
+    watch point; none for uploads without GPS). It shows boats *now*, not at
+    photo time. (`renderAis` = `renderAisBody` + this link.)
   - **Second camera: skyline cam (2026-11-07, Kevin's request):** feed id
     `skyline`, YouTube `ZTk5cIbXH2g` "St. Augustine Florida Skyline | LIVE 24/7 |
     Hosted by NoProfileBoatLifts" — **same channel (See St. Augustine, same

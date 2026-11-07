@@ -127,7 +127,18 @@ def _public(row: dict) -> dict:
     d = {k: row.get(k) for k in ("id", "created_at", "source", "taken_at", "img_w", "img_h", "tap_x", "tap_y",
                                  "sensors", "guess", "ai_status", "ai", "ai_meta", "ai_error", "confirm", "ais", "lookup", "crop")}
     d["feed"] = feeds.public(row["feed_id"]) if row.get("feed_id") else None   # incl. the credit to show
+    d["map_center"] = _map_center(row)
     return d
+
+
+def _map_center(row: dict) -> dict | None:
+    """Where to open a live ship map for this sighting: the phone's GPS, or a
+    camera feed's watch point (the water it looks at)."""
+    s = row.get("sensors") or {}
+    if s.get("lat") is not None and s.get("lon") is not None:
+        return {"lat": round(s["lat"], 5), "lon": round(s["lon"], 5)}
+    wp = (feeds.get(row.get("feed_id") or "") or {}).get("watch_point")
+    return {"lat": wp["lat"], "lon": wp["lon"]} if wp else None
 
 
 @router.get("/sightings/{sid}")

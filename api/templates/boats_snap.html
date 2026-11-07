@@ -657,6 +657,16 @@
   }
 
   function renderAis(d) {
+    renderAisBody(d);
+    const card = document.getElementById("aisCard"), c = d.map_center;
+    if (!card || !c) return;
+    const p = el("div", "small"); p.style.marginTop = "10px";
+    const a = el("a", null, "Open MarineTraffic here (live now) ↗");
+    a.href = `https://www.marinetraffic.com/en/ais/home/centerx:${c.lon}/centery:${c.lat}/zoom:15`;
+    a.target = "_blank"; a.rel = "noopener noreferrer";
+    p.appendChild(a); card.appendChild(p);
+  }
+  function renderAisBody(d) {
     const card = document.getElementById("aisCard");
     if (!card) return;
     if (card.dataset.sid !== d.id) { card.dataset.sid = d.id; aisUi = { open: false, rejected: false }; }
