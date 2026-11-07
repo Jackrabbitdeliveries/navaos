@@ -961,7 +961,8 @@
     const c = $("feedCredit"); c.replaceChildren("📹 ");
     const a = el("a", null, f.credit); a.href = f.credit_url; a.target = "_blank"; a.rel = "noopener";
     c.append(a, " · " + f.name + (f.city ? ", " + f.city : ""));
-    $("feedNote").textContent = "Grabs what the camera sees right now (it can be a few seconds different from the video you're watching). Best during the half-hour bridge zooms.";
+    $("feedNote").textContent = "Grabs what the camera sees right now (it can be a few seconds different from the video you're watching)." +
+      (f.zoom_schedule ? " Best during the half-hour bridge zooms." : "");
   }
   async function grabFeed() {
     $("startErr").textContent = "Grabbing a frame…";

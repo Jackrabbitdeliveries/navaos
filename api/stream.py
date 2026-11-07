@@ -358,20 +358,21 @@ def ais_now(client: str | None = None, x_override_pin: str | None = Header(defau
 _YT_ID_RE = re.compile(r"(?:v=|youtu\.be/|/live/|/embed/)?([A-Za-z0-9_-]{11})(?:[?&#]|$)")
 
 
-def _bridge_cfg() -> dict:
-    """The Bridge page's camera = the default feed in the feed registry
-    (navaos_boatid/feeds.py), incl. its credit."""
-    f = feeds.public(feeds.DEFAULT_FEED) or {}
+def _bridge_cfg(feed_id: str | None = None) -> dict:
+    """A Bridge page camera = an entry in the feed registry
+    (navaos_boatid/feeds.py), incl. its credit; default = the bridge cam."""
+    f = feeds.public(feed_id or feeds.DEFAULT_FEED) or {}
     return {**f, "video_id": f.get("youtube_id")}
 
 
 @router.get("/bridge/config")
-def bridge_config():
-    return _bridge_cfg()
+def bridge_config(feed: str | None = None):
+    return _bridge_cfg(feed)
 
 
 class BridgeConfig(BaseModel):
-    video: str   # a YouTube link or bare 11-character video id
+    video: str               # a YouTube link or bare 11-character video id
+    feed: str | None = None  # which camera (feed id); default = the bridge cam
 
 
 @router.post("/bridge/config")
@@ -381,8 +382,11 @@ def set_bridge_config(req: BridgeConfig, client: str | None = None,
     m = _YT_ID_RE.search(req.video.strip())
     if not m:
         raise HTTPException(400, "That doesn't look like a YouTube link or video id.")
-    feeds.set_field(feeds.DEFAULT_FEED, youtube_id=m.group(1))
-    return _bridge_cfg()
+    feed_id = req.feed or feeds.DEFAULT_FEED
+    if feeds.get(feed_id) is None:
+        raise HTTPException(404, "Unknown camera.")
+    feeds.set_field(feed_id, youtube_id=m.group(1))
+    return _bridge_cfg(feed_id)
 
 
 @router.get("/bridge/view")

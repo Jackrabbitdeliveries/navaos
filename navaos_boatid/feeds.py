@@ -37,6 +37,24 @@ BUILTIN = {
         "watch_point": {"lat": 29.8925, "lon": -81.3086, "radius_m": 300, "label": "the Bridge of Lions"},
         # Channel description: zooms on the drawbridge every half hour for 10 min, 08:00-19:45.
         "zoom_schedule": {"start": "08:00", "end": "19:45", "minutes": [0, 30], "duration_min": 10},
+        "short": "Bridge",
+        "view": "Looking north at the Bridge of Lions over the south mooring field",
+    },
+    # Added 2026-11-07 at Kevin's request: same channel and owners as the
+    # Bridge of Lions cam (overlay "NoProfileBoatLifts" = the stream's host).
+    "skyline": {
+        "name": "St. Augustine skyline cam",
+        "city": "St. Augustine, FL",
+        "youtube_id": "ZTk5cIbXH2g",
+        "credit": "See St. Augustine",
+        "credit_url": "https://www.youtube.com/@seestaug",
+        "permission": "Same channel/owners as the Bridge of Lions cam; used under the 2026-10-26 permission (Kevin to confirm it covers this cam)",
+        # From the east shore looking west across the river at downtown, north
+        # of the bridge. Rough guess at the stretch of river in view - refine.
+        "watch_point": {"lat": 29.8975, "lon": -81.3095, "radius_m": 500,
+                        "label": "the river north of the Bridge of Lions"},
+        "short": "Skyline",
+        "view": "Looking west across the river at downtown, north of the bridge",
     },
 }
 DEFAULT_FEED = "bridge-of-lions"
@@ -88,7 +106,9 @@ def public(feed_id: str) -> Optional[dict]:
     f = get(feed_id)
     if not f:
         return None
-    return {k: f.get(k) for k in ("id", "name", "city", "youtube_id", "credit", "credit_url")}
+    out = {k: f.get(k) for k in ("id", "name", "city", "youtube_id", "credit", "credit_url", "short", "view")}
+    out["zoom_schedule"] = bool(f.get("zoom_schedule"))
+    return out
 
 
 def set_field(feed_id: str, **fields) -> dict:

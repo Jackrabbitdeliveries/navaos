@@ -88,7 +88,7 @@
   let view = location.hash === "#bridge" ? "bridge" : "all";
   function drawChips() {
     const box = document.getElementById("chips"); box.replaceChildren();
-    for (const [k, lab] of [["all", "ALL"], ["mine", "MY SNAPS"], ["bridge", "📹 BRIDGE CAM"]]) {
+    for (const [k, lab] of [["all", "ALL"], ["mine", "MY SNAPS"], ["bridge", "📹 LIVE CAMS"]]) {
       const b = el("button", "chip" + (view === k ? " on" : ""), lab);
       b.onclick = () => { view = k; drawChips(); load(); };
       box.appendChild(b);

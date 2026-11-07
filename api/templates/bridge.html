@@ -28,6 +28,11 @@
            border: 1px solid var(--line); background: #000; }
     .cam iframe { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; }
     .credit { display: flex; justify-content: space-between; gap: 8px; font-size: 12px; color: var(--muted); margin: 6px 2px 0; flex-wrap: wrap; }
+    .camtabs { display: flex; gap: 6px; margin-bottom: 8px; flex-wrap: wrap; }
+    .camtab { font: inherit; font-size: 14px; font-weight: 700; color: var(--text); background: var(--panel); border: 1px solid var(--line);
+              border-radius: 999px; padding: 7px 14px; cursor: pointer; }
+    .camtab.on { background: var(--cyan); color: #07111f; border-color: var(--cyan); }
+    .camview { font-size: 12px; color: var(--muted); margin: 6px 2px 0; }
     .idbtn { display: block; text-align: center; text-decoration: none; font-size: 16px; font-weight: 700; color: #07111f; background: var(--cyan);
              border-radius: 12px; padding: 12px 16px; margin-top: 10px; }
     .watchline { font-size: 13px; color: var(--muted); margin: 8px 2px 0; }
@@ -82,12 +87,14 @@
       <a class="back" href="/radio/player">← Player</a>
     </div>
 
+    <div class="camtabs" id="camTabs"></div>
     <div class="cam" id="cam"></div>
+    <div class="camview" id="camView"></div>
     <div class="credit">
       <span>Live cam: <a id="credit" target="_blank" rel="noopener"></a> (YouTube)</span>
       <button class="linkbtn" onclick="changeVideo()">Stream moved? Change link</button>
     </div>
-    <a class="idbtn" href="/boats/snap?feed=bridge-of-lions">📷 Identify a boat in this view</a>
+    <a class="idbtn" id="idBtn" href="/boats/snap?feed=bridge-of-lions">📷 Identify a boat in this view</a>
     <div class="watchline" id="watchLine"></div>
     <div id="msg" class="msg"></div>
 
@@ -136,15 +143,33 @@
     return Math.round(s / 86400) + " d ago";
   }
 
-  // ---------- live cam (official YouTube embed only) ----------
+  // ---------- live cams (official YouTube embeds only) ----------
+  // Every camera in the feed registry gets a tab; the choice is remembered.
+  let camId = "bridge-of-lions";
+  try { camId = localStorage.getItem("navaos_cam") || camId; } catch (e) {}
+  async function loadTabs() {
+    let list = [];
+    try { list = await (await fetch("/boats/feeds")).json(); } catch (e) {}
+    if (!list.some(f => f.id === camId)) camId = "bridge-of-lions";
+    const tabs = document.getElementById("camTabs"); tabs.replaceChildren();
+    if (list.length < 2) return;
+    for (const f of list) {
+      const b = document.createElement("button");
+      b.className = "camtab" + (f.id === camId ? " on" : ""); b.textContent = f.short || f.name;
+      b.onclick = () => { camId = f.id; try { localStorage.setItem("navaos_cam", camId); } catch (e) {} loadTabs(); loadCam(); };
+      tabs.appendChild(b);
+    }
+  }
   async function loadCam() {
     let cfg;
-    try { cfg = await (await fetch("/radio/bridge/config?x=" + Date.now())).json(); } catch (e) { return; }
+    try { cfg = await (await fetch("/radio/bridge/config?feed=" + encodeURIComponent(camId) + "&x=" + Date.now())).json(); } catch (e) { return; }
     const cam = document.getElementById("cam");
+    document.getElementById("idBtn").href = "/boats/snap?feed=" + encodeURIComponent(camId);
+    document.getElementById("camView").textContent = cfg.view || "";
     if (!/^[A-Za-z0-9_-]{11}$/.test(cfg.video_id)) return;
     const f = document.createElement("iframe");
     f.src = "https://www.youtube-nocookie.com/embed/" + cfg.video_id + "?autoplay=1&mute=1&playsinline=1&rel=0";
-    f.title = "Bridge of Lions live cam";
+    f.title = cfg.name || "Live cam";
     f.allow = "autoplay; encrypted-media; picture-in-picture; fullscreen";
     f.referrerPolicy = "strict-origin-when-cross-origin";
     f.allowFullscreen = true;
@@ -154,11 +179,11 @@
   }
 
   async function changeVideo() {
-    const v = prompt("Paste the YouTube link of the Bridge of Lions live stream:");
+    const v = prompt("Paste the YouTube link of this camera's live stream:");
     if (!v) return;
     const headers = { "Content-Type": "application/json" };
     const pin = savedPin(); if (pin) headers["X-Override-Pin"] = pin;
-    const res = await fetch("/radio/bridge/config?client=" + encodeURIComponent(clientId), { method: "POST", headers, body: JSON.stringify({ video: v }) }).catch(() => null);
+    const res = await fetch("/radio/bridge/config?client=" + encodeURIComponent(clientId), { method: "POST", headers, body: JSON.stringify({ video: v, feed: camId }) }).catch(() => null);
     const d = res ? await res.json().catch(() => ({})) : {};
     if (!res || !res.ok) { msg(d.detail || "Couldn't save that link."); return; }
     msg(""); loadCam();
@@ -321,7 +346,7 @@
     const a = el("a", null, "See them →"); a.href = "/boats/log#bridge"; line.appendChild(a);
   }
 
-  loadCam(); pollStatus(); loadBoats(); loadTx(); loadWatch();
+  loadTabs(); loadCam(); pollStatus(); loadBoats(); loadTx(); loadWatch();
   setInterval(loadWatch, 30000);
   setInterval(pollStatus, 3000);
   setInterval(loadBoats, 20000);

@@ -359,6 +359,21 @@ Legacy path (`ChannelConfig.receiver="rtl_fm"`): rtl_fm → AdaptiveSquelch
     cheap local change-detect, then a cheap vision check "boat in the spans?
     where?", and only then a full identify aimed at that boat; AIS only as a
     label, not the trigger.
+  - **Second camera: skyline cam (2026-11-07, Kevin's request):** feed id
+    `skyline`, YouTube `ZTk5cIbXH2g` "St. Augustine Florida Skyline | LIVE 24/7 |
+    Hosted by NoProfileBoatLifts" — **same channel (See St. Augustine, same
+    credit)**; treated as covered by the 2026-10-26 permission, Kevin to confirm
+    with the owners. From the east shore looking west across the river at
+    downtown, north of the bridge; fixed view (no zoom schedule), on-screen
+    clock matched the Pi. `watch_point` 29.8975,−81.3095 r 500 m is a **rough
+    guess** (covers the north mooring field, ~28 AIS boats; reveal lists movers
+    first) — refine once the camera's location is known. Feed entries now
+    carry `short` (tab label) and `view` (one-line description); `public()`
+    adds a `zoom_schedule` flag. Bridge page: **camera tabs** (Bridge /
+    Skyline, from `/boats/feeds`, choice in localStorage `navaos_cam`); embed,
+    credit, view line, "Identify a boat" link and "Stream moved?" all follow
+    the tab (`GET /radio/bridge/config?feed=`, `POST … {video, feed}`). Snap
+    page's "half-hour bridge zooms" hint only for feeds with a schedule.
   - **Zoom-to-frame (2026-10-27, Kevin's request):** on the guess screen a tap
     opens a zoom view (3×, 1–6×; drag to pan, pinch or −/+, tap to centre) of
     the photo; "✓ That's the boat" saves the visible box as `crop` {x,y,w,h}
@@ -380,7 +395,7 @@ Legacy path (`ChannelConfig.receiver="rtl_fm"`): rtl_fm → AdaptiveSquelch
     per window, ≤6 per window → credited feed sighting (client "bridge-watch",
     `sensors.auto="bridge-watch"`, trigger mmsi/name/sog) + identify (budget)
     + reveal. `GET /boats/watch` status; Bridge page shows next close-up /
-    "capturing now" / captured today; My IDs has ALL · MY SNAPS · 📹 BRIDGE CAM
+    "capturing now" / captured today; My IDs has ALL · MY SNAPS · 📹 LIVE CAMS
     chips (`/boats/log#bridge`). Logs `BRIDGEWATCH-WINDOW/CAPTURE/AIS-SKIPPED`.
     Limits: boats without AIS never trigger; no fresh AIS while someone listens.
   - **AIS card redraw fix (2026-10-26):** the result page polls every 3 s while
