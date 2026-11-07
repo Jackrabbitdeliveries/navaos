@@ -167,6 +167,10 @@ class ControlManager:
             if not channel:
                 raise ControlError("tune needs a channel", 400)
             self._cm.get_config(channel)  # KeyError -> 404 upstream
+        if action == "scan" and channel not in (None, "all"):
+            # "all" = scan the standard list (every voice channel, no WX) -
+            # the Bridge page's "Scan all" button (2026-11-07)
+            raise ControlError("scan takes no channel, or \"all\"", 400)
         with self._lock:
             self.heartbeat(client)
             if action != "cancel":
@@ -182,7 +186,8 @@ class ControlManager:
             # Joining what's already selected is never a change.
             if action == "tune" and self._selection == {"mode": "direct", "channel": channel}:
                 return {"result": "joined", **self.status(client)}
-            if action == "scan" and self._selection["mode"] == "scan":
+            if action == "scan" and self._selection["mode"] == "scan" and (
+                    channel != "all" or set(self._cm.get_scan_channels()) == set(DEFAULT_SCAN_ORDER)):
                 return {"result": "joined", **self.status(client)}
             if action == "stop" and self._selection["mode"] == "idle":
                 return {"result": "joined", **self.status(client)}
@@ -247,6 +252,10 @@ class ControlManager:
                 cm.stop_direct()
             self._selection = {"mode": "direct", "channel": channel}
         elif action == "scan":
+            if channel == "all":
+                self._set_default_scan_list()
+                if self._selection["mode"] == "scan" and cm.status().get("mode") == "scan":
+                    return             # already scanning: the new list applies on the next hop
             cm.stop_direct()
             q = cm.start_scan()        # may raise ValueError (empty list)
             cm.unsubscribe_scan(q)     # we only wanted it started
@@ -383,6 +392,14 @@ class ControlManager:
             if not self._ais_active:
                 self._maybe_default_scan(now)
 
+    def _set_default_scan_list(self) -> None:
+        cm = self._cm
+        for ch in cm.get_scan_channels():
+            if ch not in DEFAULT_SCAN_ORDER:
+                cm.remove_scan_channel(ch)
+        for ch in DEFAULT_SCAN_ORDER:
+            cm.add_scan_channel(ch)
+
     def _maybe_default_scan(self, now: float) -> None:
         if not DEFAULT_SCAN_ENABLED:
             return
@@ -393,11 +410,7 @@ class ControlManager:
         if now - self._last_activity < IDLE_RETURN_S:
             return
         cm = self._cm
-        for ch in cm.get_scan_channels():
-            if ch not in DEFAULT_SCAN_ORDER:
-                cm.remove_scan_channel(ch)
-        for ch in DEFAULT_SCAN_ORDER:
-            cm.add_scan_channel(ch)
+        self._set_default_scan_list()
         self._holder = None
         self._last_activity = now  # don't retry every second if it fails
         try:

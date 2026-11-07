@@ -128,7 +128,11 @@ Legacy path (`ChannelConfig.receiver="rtl_fm"`): rtl_fm → AdaptiveSquelch
   embeddable via oEmbed). Plus ch 09 listen button (normal `/control` tune 09 +
   queue rules), AIS boats ≤1.5 nm of the bridge from the last 24 h ("toward
   bridge" only if the fix is <15 min old), and the latest 8 ch 09 clips with
-  transcripts. Linked from the player's TOOLS grid (now 2×2).
+  transcripts. Linked from the player's TOOLS grid (now 2×2). **Scan button
+  (2026-11-07, Kevin):** under ch 09, "⟳ Scan all channels" (09·13·16·68·69·71·72,
+  no WX) → `/control scan "all"` (turn/queue rules apply) and plays
+  `/radio/scan/stream.mp3`, showing the current/locked channel; the page plays
+  one thing at a time (`want` = null | "09" | "scan").
 - **Site-wide menu (2026-10-26):** `api/templates/_nav.html` (fixed ☰ button
   top-right, panel with all pages, current page highlighted, Esc/outside-tap
   closes; nv-* classes, own colours; hides each page's `a.back` corner links)
@@ -438,6 +442,9 @@ Legacy path (`ChannelConfig.receiver="rtl_fm"`): rtl_fm → AdaptiveSquelch
 
 ### Routes (prefix `/radio`)
 `POST /control {action: tune|scan|stop|resume|cancel, channel, client, pin}`
+(`scan` with `channel: "all"` first sets the scan list to `DEFAULT_SCAN_ORDER` —
+every voice channel, no WX — and is "joined" only if that list is already
+running; used by the Bridge page, 2026-11-07)
 → `applied | queued | joined | cancelled` (the player's only way to change the
 radio; `client` = random id kept in the browser's localStorage). Legacy
 `GET /stop`, `POST /scan/start|stop|resume` go through the same rules.

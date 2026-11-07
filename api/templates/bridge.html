@@ -105,6 +105,10 @@
           <button id="listenBtn" class="big-btn" onclick="toggleListen()" aria-label="Listen to channel 09">▶</button>
           <div class="radio-text"><b id="radioTitle">Listen live</b><span id="radioSub">Tune the radio to ch 09</span></div>
         </div>
+        <div class="radio-row" style="margin-top:12px">
+          <button id="scanBtn" class="big-btn" onclick="toggleScan()" aria-label="Scan all channels except weather">⟳</button>
+          <div class="radio-text"><b id="scanTitle">Scan all channels</b><span id="scanSub">09 · 13 · 16 · 68 · 69 · 71 · 72 (no WX)</span></div>
+        </div>
         <audio id="radio" preload="none"></audio>
       </div>
 
@@ -191,7 +195,9 @@
 
   // ---------- ch 09 through the shared radio ----------
   const audio = document.getElementById("radio");
-  let wantAudio = false, selection = { mode: "idle" };
+  // want = what this page is playing: null, "09" (direct) or "scan" (all channels but WX)
+  let want = null, selection = { mode: "idle" }, scanInfo = {};
+  const onTarget = w => w === "09" ? selection.mode === "direct" && selection.channel === "09" : w === "scan" && selection.mode === "scan";
 
   async function control(action, channel) {
     const res = await fetch("/radio/control", { method: "POST", headers: { "Content-Type": "application/json" },
@@ -205,34 +211,59 @@
   function stopAudio() { audio.pause(); audio.removeAttribute("src"); audio.load(); }
 
   function syncAudio() {
-    const on09 = selection.mode === "direct" && selection.channel === "09";
     const have = audio.getAttribute("src") || "";
-    if (wantAudio && on09 && !have) {
-      audio.src = "/radio/stream/09.mp3?client=" + encodeURIComponent(clientId) + "&t=" + Date.now();
-      audio.play().catch(() => msg("Tap ▶ again to start the audio."));
-    } else if ((!wantAudio || !on09) && have) {
+    const url = want === "09" ? "/radio/stream/09.mp3" : "/radio/scan/stream.mp3";
+    if (want && onTarget(want) && !have) {
+      audio.src = url + "?client=" + encodeURIComponent(clientId) + "&t=" + Date.now();
+      audio.play().catch(() => msg("Tap the button again to start the audio."));
+    } else if (have && (!want || !onTarget(want) || !have.startsWith(url))) {
       stopAudio();
     }
   }
 
   function renderRadio(d) {
     const btn = document.getElementById("listenBtn"), title = document.getElementById("radioTitle"), sub = document.getElementById("radioSub");
-    const on09 = selection.mode === "direct" && selection.channel === "09";
+    const on09 = onTarget("09"), wantAudio = want === "09";
     const ctl = d.control || {};
     btn.classList.toggle("on", wantAudio && on09);
     btn.textContent = wantAudio && on09 ? "❚❚" : "▶";
     sub.className = "";
+    renderScan(d);
     if (wantAudio && on09) { title.textContent = "Listening to ch 09"; sub.textContent = "Audio opens when someone transmits."; }
-    else if (ctl.pending && ctl.pending.yours) { title.textContent = "Ch 09 is queued"; sub.textContent = "Another listener has the radio - starts in " + Math.ceil(ctl.pending.applies_in_s / 60) + " min"; sub.className = "warn"; }
+    else if (ctl.pending && ctl.pending.yours && ctl.pending.action === "tune") { title.textContent = "Ch 09 is queued"; sub.textContent = "Another listener has the radio - starts in " + Math.ceil(ctl.pending.applies_in_s / 60) + " min"; sub.className = "warn"; }
     else if (on09) { title.textContent = "Radio is on ch 09"; sub.textContent = "Tap ▶ to listen in."; }
-    else if (selection.mode === "scan") { title.textContent = "Listen live"; sub.textContent = "Radio is scanning all channels - ▶ switches it to ch 09 (it records 09 either way when 09 is in the scan)."; }
+    else if (selection.mode === "scan") { title.textContent = "Listen live"; sub.textContent = "Radio is scanning - ▶ switches it to ch 09 (it records 09 either way when 09 is in the scan)."; }
     else { title.textContent = "Listen live"; sub.textContent = "Tune the radio to ch 09"; }
   }
 
+  function renderScan(d) {
+    const btn = document.getElementById("scanBtn"), title = document.getElementById("scanTitle"), sub = document.getElementById("scanSub");
+    const on = want === "scan" && onTarget("scan"), ctl = d.control || {};
+    btn.classList.toggle("on", on);
+    btn.textContent = on ? "❚❚" : "⟳";
+    sub.className = "";
+    if (on) {
+      title.textContent = d.locked ? "Scanning · locked on ch " + d.current_channel : "Scanning" + (d.current_channel ? " · ch " + d.current_channel : "");
+      sub.textContent = "Audio opens when someone transmits. Locks on traffic, moves on after 60 s of quiet.";
+    } else if (ctl.pending && ctl.pending.yours && ctl.pending.action === "scan") {
+      title.textContent = "Scan is queued"; sub.className = "warn";
+      sub.textContent = "Another listener has the radio - starts in " + Math.ceil(ctl.pending.applies_in_s / 60) + " min";
+    } else { title.textContent = "Scan all channels"; sub.textContent = "09 · 13 · 16 · 68 · 69 · 71 · 72 (no WX)"; }
+  }
+
+  async function toggleScan() {
+    if (want === "scan" && onTarget("scan")) { want = null; stopAudio(); return pollStatus(); }
+    want = "scan"; stopAudio();
+    const r = await control("scan", "all");
+    if (r && r.result === "queued") msg("Another listener has the radio - the scan is queued.");
+    else msg("");
+    pollStatus();
+  }
+
   async function toggleListen() {
-    const on09 = selection.mode === "direct" && selection.channel === "09";
-    if (wantAudio && on09) { wantAudio = false; stopAudio(); return pollStatus(); }
-    wantAudio = true;
+    const on09 = onTarget("09"), wantAudio = want === "09";
+    if (wantAudio && on09) { want = null; stopAudio(); return pollStatus(); }
+    want = "09"; stopAudio();
     const r = await control("tune", "09");
     if (r && r.result === "queued") msg("Another listener has the radio - ch 09 is queued.");
     else msg("");
@@ -246,7 +277,7 @@
       renderRadio(d); syncAudio();
     } catch (e) {}
   }
-  audio.onerror = audio.onended = () => { if (wantAudio) { audio.removeAttribute("src"); setTimeout(syncAudio, 1000); } };
+  audio.onerror = audio.onended = () => { if (want) { audio.removeAttribute("src"); setTimeout(syncAudio, 1000); } };
 
   // ---------- AIS boats near the bridge ----------
   function nm(lat1, lon1, lat2, lon2) {
