@@ -852,8 +852,11 @@
     function show() {
       if (!refs.length) {
         img.hidden = true; empty.hidden = false;
-        empty.textContent = "No reference photo yet";
-        cap.textContent = "Confirm this one and your photo becomes the first.";
+        empty.textContent = "No free reference photo of this model";
+        cap.replaceChildren();
+        // Commons rarely has older/rarer boats: let the user look it up themselves (opens their browser - no scraping)
+        const s = searchLink("Search photos of this model ↗");
+        if (s) cap.append(s);
         return;
       }
       const r = refs[i];
@@ -867,6 +870,18 @@
         cap.append(a, " · Wikimedia Commons");
       }
       if (refs.length > 1) cap.append(" · tap photo for next");
+      const s = searchLink("more photos ↗");
+      if (s) cap.append(" · ", s);
+    }
+    // Commons rarely has older/rarer boats: let the user look the model up (opens their browser - no scraping)
+    function searchLink(text) {
+      const name = ((slide.make || "") + " " + (slide.model || "")).trim();
+      if (!name) return null;
+      const a = el("a", null, text);
+      a.href = "https://www.bing.com/images/search?q=" + encodeURIComponent(name + " sailboat");
+      a.target = "_blank"; a.rel = "noopener";
+      a.onclick = e => e.stopPropagation();
+      return a;
     }
     img.onclick = () => { if (refs.length > 1) { i = (i + 1) % refs.length; show(); } };
     const q = "/boats/references?make=" + encodeURIComponent(slide.make || "") + "&model=" + encodeURIComponent(slide.model || "") + "&exclude=" + encodeURIComponent(sightingId)

@@ -186,11 +186,14 @@ def commons_references(make: str, model: str, limit: int = 6) -> list[dict]:
     if not mw:
         return []
     keep: list[dict] = []
+    # every word of the builder must be in the file title ("Island Trader 41" must not
+    # match a "Morgan Out Island 41" photo)
+    make_words = [w for w in norm(make).split() if w not in ("yachts", "yacht", "marine", "boats", "boat")] or [mw]
 
     def take(results, must: list[str]):
         for r in results or []:
             t = norm(r["title"]).split()
-            if mw in t and all(m in t for m in must) and all(k["url"] != r["url"] for k in keep):
+            if all(w in t for w in make_words) and all(m in t for m in must) and all(k["url"] != r["url"] for k in keep):
                 keep.append(r)
 
     # One search per model alternative ("make + model"), falling back to the first

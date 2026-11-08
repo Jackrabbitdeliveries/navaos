@@ -479,6 +479,18 @@ Legacy path (`ChannelConfig.receiver="rtl_fm"`): rtl_fm → AdaptiveSquelch
       on the hull; v2 calls it a schooner on the close-up (aft mast looks
       taller) - Kevin's confirm says ketch, worth a look. Budget headroom per
       call raised to $0.12 (`budget.EST_CALL_USD`).
+    - **Empty compare slides (2026-11-08, Kevin's first v2 snap):** v2 wrote
+      family-style candidates ("Taiwanese-built (Formosa/Ta Chiao/Mayflower
+      type)", "Herreshoff (various builders)") that the photo search can't use,
+      and Commons has almost nothing for older/rarer boats anyway. Prompt v3
+      (`PROMPT_VERSION = 3`): one real builder + one real model per candidate.
+      A slide with no free photo now shows "Search photos of this model ↗"
+      (Bing Images for "<make> <model> sailboat", opens in the user's browser -
+      no scraping, no hot-linking); slides with photos get "more photos ↗".
+      Commons is sparse even for popular boats (Lagoon 440, Belize 43, Leopard
+      45: 0 files), so this link is the main way to compare. Commons model
+      matches now need **every builder word** in the file title ("Island Trader
+      41" had matched a "Morgan Out Island 41" badge).
     - **Test confirms cleared 2026-11-08 (Kevin):** 5 confirms that were just
       picks of the AI's own guesses (Crealock 34, Formosa ketch, Catalina 34/36,
       Catalina 34/320, Morgan) set back to unconfirmed so they don't steer

@@ -26,7 +26,7 @@ from . import store
 
 MODEL = "claude-opus-5"
 EFFORT = "high"          # was "medium" until 2026-11-08
-PROMPT_VERSION = 2       # 2 = rig check, design details, fleet memory (2026-11-08)
+PROMPT_VERSION = 3       # 2 = rig check, design details, fleet memory; 3 = one real make/model per candidate (2026-11-08)
 # Tests and spare dev instances MUST set NAVAOS_BOATID_AI=0: the key file is
 # global, so otherwise every test sighting is a real, billed API call.
 AI_ENABLED = os.environ.get("NAVAOS_BOATID_AI", "1") != "0"
@@ -93,8 +93,12 @@ SCHEMA = {
             "items": {
                 "type": "object",
                 "properties": {
-                    "make": {"type": "string"},
-                    "model": {"type": "string"},
+                    "make": {"type": "string",
+                             "description": "ONE real builder name as owners write it, e.g. 'Catalina', 'Ta Chiao', "
+                                            "'Fountaine Pajot'. No lists, 'type', 'style' or '(various)'."},
+                    "model": {"type": "string",
+                              "description": "ONE real model name/number, e.g. '34', 'CT 41', 'Belize 43'. Put "
+                                             "close alternatives in 'why', or make them separate candidates."},
                     "confidence": {"type": "string", "enum": ["low", "medium", "high"]},
                     "why": {"type": "string", "description": "The id_details that fit this model (and any that don't)."},
                 },
@@ -123,7 +127,7 @@ Work in this order.
 
 4. Known boats. If the message lists KNOWN BOATS the user identified before (mostly boats that live on moorings in view of the cameras), check whether the target is one of them: same hull type and rig, same design details, same hull color, plus matching personal touches (canvas, sail-cover color, dinghy, solar arch). If it is, set known_boat and make that boat's make/model your first candidate, with confidence from how sure the match is. Don't force a match: a different boat of a popular model is common.
 
-5. Candidates: models whose design details match what you saw, each "why" naming the details that fit. Don't just list the most common boats of that type and size - if the details don't narrow it down, give fewer candidates with low confidence.
+5. Candidates: models whose design details match what you saw, each "why" naming the details that fit. Each candidate is one real builder and one real model (the app looks up photos of it by that name) - not a family like "Taiwanese-built (Formosa/Ta Chiao type)"; give the likeliest specific model and mention look-alikes in "why" Don't just list the most common boats of that type and size - if the details don't narrow it down, give fewer candidates with low confidence.
 
 Be honest about uncertainty: exact make and model from one photo is often impossible. Never invent a boat name: report visible_name only if it is clearly legible.
 
