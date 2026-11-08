@@ -90,6 +90,7 @@
     details.idd dl { margin: 6px 0 0; display: grid; grid-template-columns: auto 1fr; gap: 3px 10px; }
     details.idd dt { color: var(--muted, #8fa3b8); }
     details.idd dd { margin: 0; }
+    .teach { font-size: 12px; color: var(--muted, #8fa3b8); margin: 0 0 8px; }
     .knownwhy { font-size: 12px; color: #c9d6e6; margin: 4px 0 6px; }
     .cand { padding: 10px 0; border-top: 1px solid #183152; }
     .cand:first-of-type { border-top: none; }
@@ -907,6 +908,8 @@
     }
     const slides = slidesFor(d);
     card.appendChild(el("h2", null, slides.length ? "WHICH IS IT?  ·  SWIPE TO COMPARE" : "WHICH IS IT?"));
+    // confirms feed fleet memory (fleet.py) - say so, so people only confirm when sure
+    card.appendChild(el("p", "teach", "Your answer teaches Boat ID: the AI will compare future photos with this boat. Only confirm if you're sure (hull name, AIS or you know the boat) - otherwise tap Can't tell."));
     if (slides.length) {
       const track = el("div", "track");
       const counter = el("div", "counter", "");

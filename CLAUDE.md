@@ -456,7 +456,8 @@ Legacy path (`ChannelConfig.receiver="rtl_fm"`): rtl_fm → AdaptiveSquelch
       (`fleet.ensure_ref`: framed crop, else a ⅓ box around the tap, else the
       whole photo; ≤800 px a side; made on confirm or lazily), served at
       `GET /boats/photo/{id}/ref.jpg`; own reference photos now use it too.
-      Confirmed rig/hull come from the AI when the user taps a candidate, so a
+      The compare card says so ("Your answer teaches Boat ID … only confirm if
+      you're sure", 2026-11-08, Kevin's request). Confirmed rig/hull come from the AI when the user taps a candidate, so a
       wrong confirm teaches the fleet the wrong thing - "Change" fixes it.
     - **Sharper feed close-ups:** `capture.grab_full` keeps the full 1920×1080
       frame in memory 30 min under a random `frame_token` (≤20 frames); the
