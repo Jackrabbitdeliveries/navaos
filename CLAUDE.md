@@ -478,6 +478,11 @@ Legacy path (`ChannelConfig.receiver="rtl_fm"`): rtl_fm → AdaptiveSquelch
       on the hull; v2 calls it a schooner on the close-up (aft mast looks
       taller) - Kevin's confirm says ketch, worth a look. Budget headroom per
       call raised to $0.12 (`budget.EST_CALL_USD`).
+    - **Test confirms cleared 2026-11-08 (Kevin):** 5 confirms that were just
+      picks of the AI's own guesses (Crealock 34, Formosa ketch, Catalina 34/36,
+      Catalina 34/320, Morgan) set back to unconfirmed so they don't steer
+      fleet memory; backup `~/navaos-data/boatid/cleared_confirms_20261108.json`
+      (sighting id → old confirm). Fleet memory now = Royal Cape 45 "Ego Domi" only.
   - ⚠️ **Tests / spare instances: set `NAVAOS_BRIDGE_WATCH=0`** too.
   - ⚠️ **Tests / spare instances: also set `NAVAOS_BOATID_AI=0`** (the API key is
     global; without it every test sighting is a real, billed Opus call — this
