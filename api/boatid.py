@@ -59,6 +59,7 @@ class NewSighting(BaseModel):
     guess: dict | None = None       # hull/rig/size/model
     crop: dict | None = None        # {x,y,w,h} 0..1 - the box the user zoomed in to frame the boat
     crop_image: str | None = None   # that box as a JPEG data URL (cut from the full-size image)
+    frame_token: str | None = None  # feed photos: the full-size frame kept by capture.grab_full
 
 
 def _jpeg(data_url: str) -> bytes:
@@ -102,6 +103,12 @@ def create_sighting(req: NewSighting):
         if crop["w"] <= 0 or crop["h"] <= 0:
             raise HTTPException(400, "Bad crop box.")
         crop_jpeg = _jpeg(req.crop_image)
+        full = capture.full_frame(req.frame_token) if req.source == "feed" and req.frame_token else None
+        if full is not None:          # cut the close-up from the 1920 px frame, not the 1568 px copy
+            try:
+                crop_jpeg = capture.crop_box(full, crop)
+            except capture.CaptureError as e:
+                print(f"BOATID-FULLCROP-FAILED: {e}", flush=True)
         # the tap is the middle of the framed box (the AIS reveal aims through it)
         req.tap_x, req.tap_y = crop["x"] + crop["w"] / 2, crop["y"] + crop["h"] / 2
 
@@ -169,11 +176,11 @@ def grab_frame(feed_id: str):
         raise HTTPException(429, "One moment - grabbing frames too fast.")
     _last_grab["t"] = time.time()
     try:
-        jpeg, t = capture.grab(feed_id)
+        jpeg, t, token = capture.grab_full(feed_id)
     except capture.CaptureError as e:
         raise HTTPException(502, str(e))
     w, h = capture.image_size(jpeg) or (None, None)
-    return {"image": "data:image/jpeg;base64," + base64.b64encode(jpeg).decode(), "taken_at": t,
+    return {"image": "data:image/jpeg;base64," + base64.b64encode(jpeg).decode(), "taken_at": t, "frame_token": token,
             "w": w, "h": h, "feed": feeds.public(feed_id),
             "zoomed_on_bridge": feeds.in_zoom_window(feeds.get(feed_id), t)}
 
@@ -198,10 +205,20 @@ def list_sightings(limit: int = 50):
 
 
 @router.get("/references")
-def references(make: str, model: str = "", exclude: str | None = None):
+def references(make: str, model: str = "", exclude: str | None = None, first: str | None = None):
     """Reference photos for one make/model: your own confirmed photos first,
-    then freely licensed Wikimedia Commons photos (with credit)."""
-    return library.references(make[:80], model[:80], exclude if exclude and store.valid_id(exclude) else None)
+    then freely licensed Wikimedia Commons photos (with credit). `first` = the
+    known boat the AI matched (fleet memory): its close-up leads."""
+    refs = library.references(make[:80], model[:80], exclude if exclude and store.valid_id(exclude) else None)
+    if first and store.valid_id(first) and first != exclude:
+        row = store.get(first)
+        if row and (row.get("confirm") or {}).get("make"):
+            from navaos_boatid import fleet
+            refs = [r for r in refs if r.get("sighting") != first]
+            refs.insert(0, {"source": "own", "url": f"/boats/photo/{first}/ref.jpg", "sighting": first,
+                            "label": "Seen before" + (f" as {fleet.boat_name(row)}" if fleet.boat_name(row) else "")
+                                     + time.strftime(", %b %-d", time.localtime(row["created_at"]))})
+    return refs
 
 
 @router.get("/models")
@@ -260,6 +277,9 @@ def confirm(sid: str, req: Confirm):
     }
     conf["points"] = _model_points(row, conf)
     store.update(sid, confirm=conf)
+    if not unknown:
+        from navaos_boatid import fleet
+        fleet.ensure_ref(store.get(sid))     # this boat's close-up for fleet memory + reference photos
     return _public(store.get(sid))
 
 
@@ -360,4 +380,18 @@ def photo_crop(sid: str):
     path = store.crop_path(row) if row else None
     if path is None:
         raise HTTPException(404, "No close-up for this sighting")
+    return FileResponse(path, media_type="image/jpeg", headers={"Cache-Control": "private, max-age=86400"})
+
+
+@router.get("/photo/{sid}/ref.jpg")
+def photo_ref(sid: str):
+    """The boat's reference close-up (framed box, else a box around the tap, else the
+    whole photo; <=800 px) - used for fleet memory and the comparison slides."""
+    row = store.get(sid)
+    if row is None:
+        raise HTTPException(404, "No such sighting")
+    from navaos_boatid import fleet
+    path = fleet.ensure_ref(row)
+    if path is None:
+        raise HTTPException(404, "No reference image")
     return FileResponse(path, media_type="image/jpeg", headers={"Cache-Control": "private, max-age=86400"})

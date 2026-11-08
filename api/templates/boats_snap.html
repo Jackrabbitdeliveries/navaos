@@ -84,6 +84,13 @@
     .desc { font-size: 14px; line-height: 1.45; color: #c9d6e6; margin: 10px 0 0; }
     .feat { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
     .feat span { font-size: 12px; border: 1px solid var(--line); border-radius: 999px; padding: 3px 9px; color: #c9d6e6; }
+    .rigchk { font-size: 13px; color: #c9d6e6; margin-top: 8px; }
+    details.idd { margin-top: 8px; font-size: 13px; color: #c9d6e6; }
+    details.idd summary { cursor: pointer; color: var(--muted, #8fa3b8); }
+    details.idd dl { margin: 6px 0 0; display: grid; grid-template-columns: auto 1fr; gap: 3px 10px; }
+    details.idd dt { color: var(--muted, #8fa3b8); }
+    details.idd dd { margin: 0; }
+    .knownwhy { font-size: 12px; color: #c9d6e6; margin: 4px 0 6px; }
     .cand { padding: 10px 0; border-top: 1px solid #183152; }
     .cand:first-of-type { border-top: none; }
     .cand b { font-size: 15px; }
@@ -489,7 +496,7 @@
     const btn = $("goBtn"); btn.disabled = true; $("submitErr").textContent = "";
     const body = { image: shot.dataUrl, source: shot.source, feed_id: shot.feed ? shot.feed.id : null, client: clientId, taken_at: shot.taken_at,
       img_w: shot.w, img_h: shot.h, tap_x: tap && tap.x, tap_y: tap && tap.y, sensors: shot.sensors,
-      crop: frame, crop_image: frame ? cropJpeg() : null,
+      crop: frame, crop_image: frame ? cropJpeg() : null, frame_token: shot.frame_token || null,
       guess: { hull: guess.hull || "unknown", rig: guess.rig || "unknown", size: guess.size || "unknown", model: $("gModel").value.trim() } };
     let res;
     try { res = await fetch("/boats/sightings", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }); }
@@ -591,6 +598,17 @@
     if (ai.visible_name) { const n = el("div", "namecard"); n.append("Name on the hull: "); n.appendChild(el("b", null, ai.visible_name)); card.appendChild(n); }
     card.appendChild(el("p", "desc", ai.description));
     if (ai.features && ai.features.length) { const f = el("div", "feat"); for (const t of ai.features) f.appendChild(el("span", null, t)); card.appendChild(f); }
+    if (ai.rig_evidence) {
+      const m = ai.masts_on_this_hull;
+      card.appendChild(el("div", "rigchk", "Rig check: " + (m != null ? m + (m === 1 ? " mast" : " masts") + " on this hull · " : "") + ai.rig_evidence));
+    }
+    if (ai.id_details) {
+      const dd = el("details", "idd"); dd.appendChild(el("summary", null, "Design details the AI looked at"));
+      const dl = el("dl");
+      const names = { portlights: "Ports/windows", cabin_trunk: "Cabin", sheer_and_freeboard: "Sheer", bow: "Bow", stern: "Stern", cockpit: "Cockpit", rig_details: "Rig" };
+      for (const [k, v] of Object.entries(ai.id_details)) { if (v) dl.append(el("dt", null, names[k] || k), el("dd", null, v)); }
+      dd.appendChild(dl); card.appendChild(dd);
+    }
     box.appendChild(card);
 
     box.appendChild(buildCompare(d));
@@ -807,8 +825,10 @@
 
   function slidesFor(d) {
     const ai = d.ai || {}, g = d.guess || {};
+    const kb = ai.known_boat;
     const out = (ai.candidates || []).map((c, i) => ({ kind: "candidate", index: i, make: c.make, model: c.model,
-      confidence: c.confidence, why: c.why, hull: ai.hull, rig: ai.rig, size: ai.size_class }));
+      confidence: c.confidence, why: c.why, hull: ai.hull, rig: ai.rig, size: ai.size_class,
+      known: kb && i === 0 && norm(c.make + " " + c.model) === norm(kb.make + " " + kb.model) ? kb : null }));
     if (g.model) {
       const gm = norm(g.model);
       const listed = out.some(c => norm(c.make + " " + c.model).includes(gm) || gm.includes(norm(c.make + " " + c.model)));
@@ -848,7 +868,8 @@
       if (refs.length > 1) cap.append(" · tap photo for next");
     }
     img.onclick = () => { if (refs.length > 1) { i = (i + 1) % refs.length; show(); } };
-    const q = "/boats/references?make=" + encodeURIComponent(slide.make || "") + "&model=" + encodeURIComponent(slide.model || "") + "&exclude=" + encodeURIComponent(sightingId);
+    const q = "/boats/references?make=" + encodeURIComponent(slide.make || "") + "&model=" + encodeURIComponent(slide.model || "") + "&exclude=" + encodeURIComponent(sightingId)
+      + (slide.known ? "&first=" + encodeURIComponent(slide.known.sighting) : "");
     fetch(q).then(r => r.json()).then(list => { refs = Array.isArray(list) ? list : []; show(); }).catch(() => { refs = []; show(); });
     return wrap;
   }
@@ -895,6 +916,7 @@
         head.appendChild(el("b", null, (sl.make + " " + sl.model).trim()));
         if (sl.confidence) head.appendChild(el("span", "conf " + sl.confidence, sl.confidence.toUpperCase()));
         if (sl.kind === "own") head.appendChild(el("span", "conf medium", "YOUR GUESS"));
+        if (sl.known) head.appendChild(el("span", "conf high", "SEEN BEFORE" + (sl.known.name ? " · " + sl.known.name.toUpperCase() : "")));
         slide.append(head, refViewer(sl, d.id), el("div", "why", sl.why));
         const ok = el("button", "btn primary", "That's it ✓");
         ok.onclick = () => sendConfirm(d.id, { choice: sl.kind === "own" ? "own" : "candidate", candidate_index: sl.index ?? null,
@@ -917,8 +939,8 @@
     // can't tell / none of these
     const cant = el("button", "btn", "Can't tell");
     cant.title = "The photo isn't enough to decide";
-    cant.onclick = () => sendConfirm(d.id, { choice: "unsure", hull: (d.ai || {}).hull || "unknown", rig: (d.ai || {}).rig || "unknown",
-                                             size: (d.ai || {}).size_class || "unknown" });
+    // "Can't tell" records nothing about the boat (it used to save the AI's own hull/rig/size as your answer)
+    cant.onclick = () => sendConfirm(d.id, { choice: "unsure", hull: "unknown", rig: "unknown", size: "unknown" });
     const noneBtn = el("button", "btn", "None of these");
     const form = noneForm(d);
     form.hidden = true;
@@ -982,7 +1004,7 @@
     const d = await r.json().catch(() => ({}));
     if (!r.ok) { $("startErr").textContent = d.detail || "Couldn't grab a frame."; return; }
     $("startErr").textContent = "";
-    shot = { dataUrl: d.image, w: d.w, h: d.h, source: "feed", taken_at: d.taken_at, sensors: null, feed: d.feed };
+    shot = { dataUrl: d.image, w: d.w, h: d.h, source: "feed", taken_at: d.taken_at, sensors: null, feed: d.feed, frame_token: d.frame_token || null };
     openGuess();
   }
   initFeed();

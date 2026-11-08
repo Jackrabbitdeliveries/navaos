@@ -112,6 +112,12 @@ def crop_path(row: dict) -> Optional[Path]:
     return p if p.is_file() and DATA_DIR.resolve() in p.parents else None
 
 
+def ref_file(row: dict) -> Path:
+    """Where the boat's reference close-up lives (<id>_ref.jpg, made by fleet.ensure_ref)."""
+    p = (DATA_DIR / row["photo"]).resolve()
+    return p.with_name(p.stem + "_ref.jpg")
+
+
 def insert(row: dict) -> None:
     row = {k: (json.dumps(v) if k in JSON_COLS and v is not None else v) for k, v in row.items()}
     cols = ", ".join(row)

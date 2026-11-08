@@ -26,7 +26,7 @@ PRICES = {
     "claude-haiku-4-5": (1.0, 5.0),
 }
 FALLBACK_PRICE = (5.0, 25.0)
-EST_CALL_USD = 0.05   # headroom kept for the call about to be made
+EST_CALL_USD = 0.12   # headroom for the call about to be made (v2 prompt: 7-13 cents, 2026-11-08)
 
 
 def cap_usd() -> float:

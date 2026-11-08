@@ -77,7 +77,7 @@ def own_references(make: str, model: str, exclude: Optional[str] = None, limit: 
         if r["id"] == exclude or not c.get("make") or c.get("model_unknown"):
             continue
         if same_model(make, model, c["make"], c.get("model", "")):
-            out.append({"source": "own", "url": f"/boats/photo/{r['id']}.jpg", "sighting": r["id"],
+            out.append({"source": "own", "url": f"/boats/photo/{r['id']}/ref.jpg", "sighting": r["id"],
                         "label": "Your photo, " + time.strftime("%b %-d", time.localtime(r["created_at"]))})
             if len(out) >= limit:
                 break

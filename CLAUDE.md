@@ -216,7 +216,7 @@ Legacy path (`ChannelConfig.receiver="rtl_fm"`): rtl_fm → AdaptiveSquelch
     tokens (unguessable). Env `NAVAOS_BOATID_DIR` for tests.
   - `identify.py` — background thread per sighting → `claude-opus-5` via
     `client.beta.messages.create` with `betas=["server-side-fallback-2026-07-01"]`,
-    `fallbacks="default"`, effort medium, structured output (JSON schema:
+    `fallbacks="default"`, effort medium (high since 2026-11-08, see "AI accuracy v2"), structured output (JSON schema:
     is_sailboat, hull, rig, size_class, length_ft_estimate, hull_color,
     visible_name, features, description, up to 5 candidates {make, model,
     confidence, why}, notes). The user's guess is hidden from the model. Handles
@@ -351,7 +351,7 @@ Legacy path (`ChannelConfig.receiver="rtl_fm"`): rtl_fm → AdaptiveSquelch
   - **AI budget (2026-10-26):** `navaos_boatid/budget.py` — **$2/day cap** on ALL
     Boat ID Claude calls (kit.json `ai_daily_cap_usd`), spend computed from
     stored token counts × list price per model; `identify.start()` refuses with
-    "Daily AI budget reached" when spent + $0.05 would exceed it. `GET /boats/budget`.
+    "Daily AI budget reached" when spent + $0.12 would exceed it. `GET /boats/budget`.
   - **Bridge watch PAUSED 2026-10-27 (Kevin)** — now off unless
     `NAVAOS_BRIDGE_WATCH=1`. Why: all 7 automatic captures (10-26/27) were
     triggered by **SAPPHIRE**, moored near the bridge, whose AIS drifts to
@@ -428,6 +428,56 @@ Legacy path (`ChannelConfig.receiver="rtl_fm"`): rtl_fm → AdaptiveSquelch
     17 s: 2003 Royal Cape 42/45 catamaran, 44 ft, the owners' YouTube channel,
     a listing, VesselFinder (MMSI 368396740, nameless in our AIS DB).
     Idea: fill nameless AIS entries from lookups.
+  - **AI accuracy v2 (2026-11-08, Kevin's feedback: compare choices "really
+    bad", phantom aft masts, ignores portlights).** Findings in 23 sightings:
+    features were canvas/mooring trivia, candidates were base-rate lists
+    (every cat = Lagoon/FP/Leopard), a pilothouse sloop was called a ketch
+    from a neighbour's mast, and the confirmed Royal Cape 45 "Ego Domi" was
+    re-snapped 5× as "Lagoon 410". Changes (`identify.PROMPT_VERSION = 2`,
+    stored in `ai_meta.prompt`):
+    - **Rig check:** schema asks `masts_on_this_hull` + `rig_evidence` *before*
+      `rig`; prompt: overlapping masts/cranes/poles in mooring fields, a second
+      mast counts only if seen rising from this deck with its own rigging, ketch
+      only when clear, else unknown. Result screen shows "Rig check: …".
+    - **Design details:** required `id_details` {portlights, cabin_trunk,
+      sheer_and_freeboard, bow, stern, cockpit, rig_details} filled before
+      candidates; canvas/covers/moorings banned as model evidence; each
+      candidate's `why` must cite details. Collapsible "Design details the AI
+      looked at" on the result screen.
+    - **Fleet memory** (`navaos_boatid/fleet.py`): every call also gets up to
+      10 distinct **confirmed** boats (same camera first, then newest; dedupe by
+      AIS MMSI / boat name / model+colour) as text + one close-up each
+      ("K1 … K10"); schema `known_boat` {ref, confidence, why}.
+      `identify.resolve_known` maps the ref to {sighting, make, model, name,
+      seen} and, at medium/high, puts that boat first in `candidates` (first
+      compare slide, badge "SEEN BEFORE · NAME", its close-up first via
+      `/boats/references?…&first=<sid>`). Boat name = AIS answer, else hull
+      lettering, else a successful lookup's name. Close-ups = `<id>_ref.jpg`
+      (`fleet.ensure_ref`: framed crop, else a ⅓ box around the tap, else the
+      whole photo; ≤800 px a side; made on confirm or lazily), served at
+      `GET /boats/photo/{id}/ref.jpg`; own reference photos now use it too.
+      Confirmed rig/hull come from the AI when the user taps a candidate, so a
+      wrong confirm teaches the fleet the wrong thing - "Change" fixes it.
+    - **Sharper feed close-ups:** `capture.grab_full` keeps the full 1920×1080
+      frame in memory 30 min under a random `frame_token` (≤20 frames); the
+      frame route returns it, the page sends it back, and the server cuts the
+      zoom box from the full frame (`capture.crop_box`, ffmpeg) - 640×360
+      instead of 523×294 for a ⅓ box. Falls back to the page's crop.
+      `capture.scale/fit/crop_box` = ffmpeg helpers (no PIL in the venv).
+    - **Effort high** (`identify.EFFORT`, was medium).
+    - **"Can't tell" bug:** it saved the AI's hull/rig/size as the user's answer;
+      now all unknown. 3 old rows fixed in the DB (`confirm.fixed_20261108`).
+    - `identify.build_content(row, path)` + `identify.ask(content)` = the request
+      without storing (used by the eval script).
+    - **Eval 2026-11-08** (11 saved photos re-run with v2, results only in the
+      session scratchpad, $1.02 total ≈ 7–13¢ each, 22–67 s): all 5 teal-cat
+      re-snaps → "SEEN BEFORE Royal Cape 45" (high, citing the "ego domi"
+      lettering); the pilothouse motorsailer → rig unknown, 1 mast (v1: ketch);
+      a Catalina-ish sloop with a mast behind it → unknown instead of ketch;
+      the big green-covered two-master (EnjJ / RcOZ, same boat) has both masts
+      on the hull; v2 calls it a schooner on the close-up (aft mast looks
+      taller) - Kevin's confirm says ketch, worth a look. Budget headroom per
+      call raised to $0.12 (`budget.EST_CALL_USD`).
   - ⚠️ **Tests / spare instances: set `NAVAOS_BRIDGE_WATCH=0`** too.
   - ⚠️ **Tests / spare instances: also set `NAVAOS_BOATID_AI=0`** (the API key is
     global; without it every test sighting is a real, billed Opus call — this
