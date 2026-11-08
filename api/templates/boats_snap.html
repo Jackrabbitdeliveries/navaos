@@ -606,7 +606,7 @@
     if (ai.id_details) {
       const dd = el("details", "idd"); dd.appendChild(el("summary", null, "Design details the AI looked at"));
       const dl = el("dl");
-      const names = { portlights: "Ports/windows", cabin_trunk: "Cabin", sheer_and_freeboard: "Sheer", bow: "Bow", stern: "Stern", cockpit: "Cockpit", rig_details: "Rig" };
+      const names = { hull_ports: "Hull ports", cabin_ports: "Cabin ports", portlights: "Ports/windows", cabin_trunk: "Cabin", sheer_and_freeboard: "Sheer", bow: "Bow", stern: "Stern", cockpit: "Cockpit", rig_details: "Rig" };
       for (const [k, v] of Object.entries(ai.id_details)) { if (v) dl.append(el("dt", null, names[k] || k), el("dd", null, v)); }
       dd.appendChild(dl); card.appendChild(dd);
     }

@@ -26,7 +26,8 @@ from . import store
 
 MODEL = "claude-opus-5"
 EFFORT = "high"          # was "medium" until 2026-11-08
-PROMPT_VERSION = 3       # 2 = rig check, design details, fleet memory; 3 = one real make/model per candidate (2026-11-08)
+PROMPT_VERSION = 4       # 2 = rig check, design details, fleet memory; 3 = one real make/model per candidate;
+                         # 4 = hull ports vs cabin ports as separate details (2026-11-08)
 # Tests and spare dev instances MUST set NAVAOS_BOATID_AI=0: the key file is
 # global, so otherwise every test sighting is a real, billed API call.
 AI_ENABLED = os.environ.get("NAVAOS_BOATID_AI", "1") != "0"
@@ -37,8 +38,12 @@ RIGS = ["sloop", "cutter", "ketch_or_yawl", "schooner", "cat_rig", "unknown"]
 SIZES = ["under_30", "30_39", "40_49", "50_plus", "unknown"]
 
 DETAIL_FIELDS = {
-    "portlights": "Hull and cabin-side ports/windows: shape (round, oval, rectangular, slanted, long strip), "
-                  "count per side, where (hull topsides or cabin side), frames (bronze, black, stainless).",
+    "hull_ports": "Ports/windows in the HULL itself (the topsides below the deck edge): none, or how many per "
+                  "side, shape (round, oval, rectangular, long strip), placement (forward, aft, in a band). "
+                  "Many models are told apart by this alone - say 'none' only if that part of the hull is "
+                  "clearly visible.",
+    "cabin_ports": "Ports/windows in the cabin trunk or deckhouse ABOVE the deck: count per side, shape (round, "
+                   "oval, rectangular, slanted, wraparound), frames (bronze, black, stainless).",
     "cabin_trunk": "Coachroof/deckhouse profile: low, stepped, raised saloon, pilothouse; front windshield shape.",
     "sheer_and_freeboard": "Sheer line (straight, springy, reverse), freeboard, any hull stripe or cove line.",
     "bow": "Bow shape and gear: plumb, raked, clipper, spoon; bowsprit, anchor platform, pulpit.",
@@ -123,7 +128,7 @@ Work in this order.
 
 2. Rig. Count only masts that stand on the target's own deck. In a mooring field the mast of a boat behind or in front very often lines up with the target and looks like a second mast - so do cranes, flagpoles, light poles and antennas. A second mast counts only if you can see it rise from this hull's deck (inside its outline, between its bow and stern) and it has its own rigging or boom/sail cover; if you can't see that, it's one mast. Then: sloop (one mast, one headstay), cutter (one mast, two headstays), ketch or yawl (two masts, the aft one shorter), schooner (two or more masts, the forward one shorter or equal), cat rig (one mast well forward, no headsail). A ketch is far rarer here than a sloop - say ketch only when both masts are clearly on this hull; if unsure, prefer "unknown" over a guess.
 
-3. Design details. Before naming any model, look closely at what actually differs between models and fill in id_details: portlight and window shape/count/placement, cabin trunk and deckhouse profile, sheer, bow, stern/transom, cockpit position, spreaders and rig details. Canvas colors, sail covers, fenders, dinghies and moorings change from owner to owner and say nothing about the model - never use them as evidence for a make/model (they can help recognise a KNOWN BOAT, below).
+3. Design details. Before naming any model, look closely at what actually differs between models and fill in id_details: ports and windows in the hull itself versus in the cabin above deck (a strong tell - keep the two apart), their shape and count, cabin trunk and deckhouse profile, sheer, bow, stern/transom, cockpit position, spreaders and rig details. Canvas colors, sail covers, fenders, dinghies and moorings change from owner to owner and say nothing about the model - never use them as evidence for a make/model (they can help recognise a KNOWN BOAT, below).
 
 4. Known boats. If the message lists KNOWN BOATS the user identified before (mostly boats that live on moorings in view of the cameras), check whether the target is one of them: same hull type and rig, same design details, same hull color, plus matching personal touches (canvas, sail-cover color, dinghy, solar arch). If it is, set known_boat and make that boat's make/model your first candidate, with confidence from how sure the match is. Don't force a match: a different boat of a popular model is common.
 

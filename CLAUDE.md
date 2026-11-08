@@ -439,7 +439,9 @@ Legacy path (`ChannelConfig.receiver="rtl_fm"`): rtl_fm → AdaptiveSquelch
       `rig`; prompt: overlapping masts/cranes/poles in mooring fields, a second
       mast counts only if seen rising from this deck with its own rigging, ketch
       only when clear, else unknown. Result screen shows "Rig check: …".
-    - **Design details:** required `id_details` {portlights, cabin_trunk,
+    - **Design details:** required `id_details` {hull_ports, cabin_ports (split
+      from one `portlights` field in prompt v4 - Kevin: ports in the hull vs the
+      cabin above deck are a key tell), cabin_trunk,
       sheer_and_freeboard, bow, stern, cockpit, rig_details} filled before
       candidates; canvas/covers/moorings banned as model evidence; each
       candidate's `why` must cite details. Collapsible "Design details the AI
