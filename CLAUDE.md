@@ -493,6 +493,12 @@ Legacy path (`ChannelConfig.receiver="rtl_fm"`): rtl_fm → AdaptiveSquelch
       45: 0 files), so this link is the main way to compare. Commons model
       matches now need **every builder word** in the file title ("Island Trader
       41" had matched a "Morgan Out Island 41" badge).
+    - **"Don't make me guess" (2026-11-10, Kevin's request):** checkbox on the
+      guess card (remembered per phone, localStorage `navaos_noguess`) hides the
+      hull/rig/size/model chips; button becomes "Identify it". Sends `guess`
+      {all unknown, model "", `skipped: true`} (server keeps only that). Result
+      card is "WHAT THE AI SEES" (AI column only, no score); My IDs shows "NO
+      GUESS" under the "–" score. Skipped photos never count toward scores.
     - **Test confirms cleared 2026-11-08 (Kevin):** 5 confirms that were just
       picks of the AI's own guesses (Crealock 34, Formosa ketch, Catalina 34/36,
       Catalina 34/320, Morgan) set back to unconfirmed so they don't steer

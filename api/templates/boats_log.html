@@ -136,7 +136,7 @@
         main.appendChild(el("div", "sub", "📹 " + s.feed.credit + " · " + s.feed.name + (auto ? " · auto" + (s.sensors.trigger_name ? " (AIS: " + s.sensors.trigger_name + ")" : "") : "")));
       }
       const sco = el("div", "score " + (!sc || !sc.tried ? "none" : sc.pts === sc.tried ? "full" : "part"), sc && sc.tried ? sc.pts + "/" + sc.tried : "–");
-      sco.appendChild(el("small", null, "SCORE"));
+      sco.appendChild(el("small", null, g.skipped ? "NO GUESS" : "SCORE"));
       a.append(img, main, sco);
       box.appendChild(a);
     }

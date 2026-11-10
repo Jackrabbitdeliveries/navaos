@@ -90,6 +90,8 @@ def create_sighting(req: NewSighting):
         v = (req.guess or {}).get(k)
         guess[k] = v if v in allowed else "unknown"
     guess["model"] = str((req.guess or {}).get("model") or "").strip()[:80]
+    if (req.guess or {}).get("skipped") is True:     # "Don't make me guess" - no guess, no score
+        guess = {"hull": "unknown", "rig": "unknown", "size": "unknown", "model": "", "skipped": True}
 
     def clamp01(v):
         return None if v is None else min(1.0, max(0.0, float(v)))

@@ -90,6 +90,7 @@
     details.idd dl { margin: 6px 0 0; display: grid; grid-template-columns: auto 1fr; gap: 3px 10px; }
     details.idd dt { color: var(--muted, #8fa3b8); }
     details.idd dd { margin: 0; }
+    .noguess { font-size: 13px; color: var(--muted, #8fa3b8); margin: -2px 0 10px; }
     .teach { font-size: 12px; color: var(--muted, #8fa3b8); margin: 0 0 8px; }
     .knownwhy { font-size: 12px; color: #c9d6e6; margin: 4px 0 6px; }
     .cand { padding: 10px 0; border-top: 1px solid #183152; }
@@ -196,11 +197,14 @@
       </div>
       <div class="credit-line" id="shotCredit" hidden></div>
       <div class="card">
-        <h2>YOUR GUESS</h2>
-        <div class="q"><label>HULL</label><div class="chips" id="gHull"></div></div>
-        <div class="q"><label>RIG</label><div class="chips" id="gRig"></div></div>
-        <div class="q"><label>SIZE</label><div class="chips" id="gSize"></div></div>
-        <div class="q"><label>MAKE / MODEL (OPTIONAL)</label><input type="text" id="gModel" placeholder="e.g. Catalina 30" maxlength="80" autocomplete="off"></div>
+        <h2 id="guessTitle">YOUR GUESS</h2>
+        <label class="chk noguess"><input type="checkbox" id="noGuess" onchange="setNoGuess(this.checked)"> Don't make me guess - just identify it</label>
+        <div id="guessFields">
+          <div class="q"><label>HULL</label><div class="chips" id="gHull"></div></div>
+          <div class="q"><label>RIG</label><div class="chips" id="gRig"></div></div>
+          <div class="q"><label>SIZE</label><div class="chips" id="gSize"></div></div>
+          <div class="q"><label>MAKE / MODEL (OPTIONAL)</label><input type="text" id="gModel" placeholder="e.g. Catalina 30" maxlength="80" autocomplete="off"></div>
+        </div>
         <div class="row"><button class="btn" id="retakeBtn" onclick="retake()">Retake</button><button class="btn" onclick="cancelShot()">Cancel</button></div>
         <div class="row"><button class="btn primary" id="goBtn" onclick="submit()">Reveal the AI's guess</button></div>
         <div id="submitErr" class="err"></div>
@@ -393,6 +397,7 @@
     $("shot").src = shot.dataUrl; $("marker").hidden = true; $("tapHint").hidden = false;
     $("gModel").value = ""; $("submitErr").textContent = "";
     chips("gHull", HULLS, "hull"); chips("gRig", RIGS, "rig"); chips("gSize", SIZES, "size");
+    setNoGuess(noGuessSaved());
     show("stGuess");
   }
   $("shotBox").addEventListener("click", ev => {
@@ -493,12 +498,23 @@
   }
   function cancelShot() { shot = null; $("startErr").textContent = ""; show("stStart"); }
 
+  // "Don't make me guess" (2026-11-10, Kevin's request) - remembered on this phone
+  function noGuessSaved() { try { return localStorage.getItem("navaos_noguess") === "1"; } catch (e) { return false; } }
+  function setNoGuess(on) {
+    $("noGuess").checked = on; $("guessFields").hidden = on;
+    $("guessTitle").textContent = on ? "IDENTIFY THIS BOAT" : "YOUR GUESS";
+    $("goBtn").textContent = on ? "Identify it" : "Reveal the AI's guess";
+    try { localStorage.setItem("navaos_noguess", on ? "1" : "0"); } catch (e) {}
+  }
+
   async function submit() {
+    const skip = $("noGuess").checked;
     const btn = $("goBtn"); btn.disabled = true; $("submitErr").textContent = "";
     const body = { image: shot.dataUrl, source: shot.source, feed_id: shot.feed ? shot.feed.id : null, client: clientId, taken_at: shot.taken_at,
       img_w: shot.w, img_h: shot.h, tap_x: tap && tap.x, tap_y: tap && tap.y, sensors: shot.sensors,
       crop: frame, crop_image: frame ? cropJpeg() : null, frame_token: shot.frame_token || null,
-      guess: { hull: guess.hull || "unknown", rig: guess.rig || "unknown", size: guess.size || "unknown", model: $("gModel").value.trim() } };
+      guess: skip ? { hull: "unknown", rig: "unknown", size: "unknown", model: "", skipped: true }
+                  : { hull: guess.hull || "unknown", rig: guess.rig || "unknown", size: guess.size || "unknown", model: $("gModel").value.trim() } };
     let res;
     try { res = await fetch("/boats/sightings", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }); }
     catch (e) { $("submitErr").textContent = "Upload failed - check your connection."; btn.disabled = false; return; }
@@ -592,9 +608,14 @@
       if (pts_ && !conf.model_unknown) aiCell.appendChild(el("span", "m " + (pts_.ai_rank === 1 ? "yes" : "no"), pts_.ai_rank ? (pts_.ai_rank === 1 ? "✓" : "#" + pts_.ai_rank) : "✗"));
       tr.appendChild(aiCell);
     }
-    card.append(el("h2", null, conf && !conf.model_unknown ? "YOU VS THE AI · CONFIRMED" : "YOU VS THE AI"));
-    card.appendChild(el("div", "score", tried ? pts + " / " + tried : "–"));
-    card.appendChild(el("div", "small", tried ? "fields where you and the AI agree (the AI can be wrong too - the AIS reveal comes later)" : "make a guess next time to score"));
+    if (g.skipped) {                 // no guess: just the AI's read, no "YOU" column or score
+      for (const tr of tbl.rows) tr.deleteCell(1);
+      card.append(el("h2", null, "WHAT THE AI SEES"));
+    } else {
+      card.append(el("h2", null, conf && !conf.model_unknown ? "YOU VS THE AI · CONFIRMED" : "YOU VS THE AI"));
+      card.appendChild(el("div", "score", tried ? pts + " / " + tried : "–"));
+      card.appendChild(el("div", "small", tried ? "fields where you and the AI agree (the AI can be wrong too - the AIS reveal comes later)" : "make a guess next time to score"));
+    }
     card.appendChild(tbl);
     if (ai.visible_name) { const n = el("div", "namecard"); n.append("Name on the hull: "); n.appendChild(el("b", null, ai.visible_name)); card.appendChild(n); }
     card.appendChild(el("p", "desc", ai.description));
