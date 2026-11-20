@@ -91,7 +91,13 @@ class RTLSDRReceiver:
         if self._proc is None or self._proc.stdout is None:
             raise RuntimeError("Receiver not started - call start() first")
         stdout = self._proc.stdout
+        from .iq_receiver import STALL_TIMEOUT_S
+        import select
         while True:
+            # never block forever on a hung dongle (see iq_receiver.STALL_TIMEOUT_S)
+            if not select.select([stdout], [], [], STALL_TIMEOUT_S)[0]:
+                print(f"RTLFM-STALL no audio for {STALL_TIMEOUT_S:.0f}s - dongle not streaming", flush=True)
+                break
             chunk = stdout.read(frame_bytes)
             if not chunk:
                 break

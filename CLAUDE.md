@@ -762,6 +762,26 @@ metric = (8–16 kHz energy) − (0.3–3 kHz energy):
   selects the vessel); player recent strip shows a one-line transcript
   (HTML-escaped).
 
+### Dongle hang → "resource busy" everywhere (2026-11-14 → 11-20)
+From ~19:00 on 2026-11-14 every tune, scan, AIS window and noise-meter run
+failed with `usb_claim_interface error -6` (resource busy) until Kevin noticed
+on 11-20. Cause: the RTL-SDR **stopped streaming** (opens fine, sends zero
+samples - a fresh `rtl_sdr` wrote only its 359-byte banner in 2 min), and the
+receivers' `read()` had **no timeout**: the scan thread blocked forever, never
+saw its stop flag, so its `rtl_sdr` was never terminated and kept the dongle
+claimed while the app reported "idle". A service restart alone didn't help -
+the next default scan hung the same way 30 s later. **Fix (code):**
+`iq_receiver.STALL_TIMEOUT_S = 5` - `select()` before each read; no samples
+for 5 s → log `IQRECEIVER-STALL`, end the read, the receiver's `stop()` kills
+`rtl_sdr` and frees the dongle; a scan then fails 5 channels (~30 s) and goes
+idle on its own. Same guard in `sdr_receiver` (rtl_fm, `RTLFM-STALL`).
+Tested with a fake rtl_sdr that never sends data. **Fix (hardware):** a hung
+dongle needs a USB reset - unplug/replug it (or power-cycle the Pi), then
+restart the service. If `IQRECEIVER-STALL` lines keep appearing, suspect the
+dongle/cable/USB power. Also noticed: the kernel DVB driver
+(`dvb_usb_rtl28xxu`) is not blacklisted (librtlsdr detaches it on open);
+blacklisting it is a possible hardening step.
+
 ## Open issues / backlog
 
 (No GitHub issues exist yet — the deploy key can't use the issues API. Track

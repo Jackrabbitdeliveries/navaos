@@ -23,6 +23,7 @@ Pure numpy - no scipy.
 """
 from __future__ import annotations
 
+import select
 import subprocess
 import threading
 from typing import Iterator, Optional
@@ -35,6 +36,12 @@ _STDERR_TAIL_LINES = 50
 _DEEMPH_TAU_S = 75e-6
 _DC_EXCLUDE_HZ = 20_000      # ignore bins this close to the tuned center
 _EDGE_EXCLUDE_FRAC = 0.1     # ignore outer 10% of the band (anti-alias rolloff)
+# If the dongle sends no samples for this long, give up on the read (2026-11-20).
+# A hung dongle used to block read() forever: the scan/tune thread never saw its
+# stop flag, its rtl_sdr was never stopped, and the dongle stayed claimed
+# ("resource busy" for every later tune, scan, AIS window and noise meter) for
+# days. Device open takes ~0.7 s; frames normally arrive every ~34 ms.
+STALL_TIMEOUT_S = 5.0
 
 
 def _lowpass_taps(num_taps: int, cutoff_hz: float, fs: float) -> np.ndarray:
@@ -148,6 +155,7 @@ class IQReceiver:
         self._stderr_lines: list[str] = []
         self._stderr_thread: Optional[threading.Thread] = None
         self.rf_snr_db: Optional[float] = None
+        self.stalled = False
         self._demod = NBFMDemodulator(
             iq_rate=config.iq_sample_rate,
             audio_rate=config.sample_rate,
@@ -217,9 +225,16 @@ class IQReceiver:
             raise RuntimeError("Receiver not started - call start() first")
         stdout = self._proc.stdout
         iq_bytes = (frame_bytes // 2) * self._demod.decim * 2  # 2 bytes (I,Q) per sample
+        self.stalled = False
         while True:
             chunk = b""
             while len(chunk) < iq_bytes:
+                ready, _, _ = select.select([stdout], [], [], STALL_TIMEOUT_S)
+                if not ready:
+                    self.stalled = True
+                    print(f"IQRECEIVER-STALL no samples for {STALL_TIMEOUT_S:.0f}s "
+                          f"f={self._cfg.frequency_hz} - dongle not streaming; giving up this read", flush=True)
+                    return
                 part = stdout.read(iq_bytes - len(chunk))
                 if not part:
                     return
