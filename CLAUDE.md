@@ -777,10 +777,14 @@ for 5 s → log `IQRECEIVER-STALL`, end the read, the receiver's `stop()` kills
 idle on its own. Same guard in `sdr_receiver` (rtl_fm, `RTLFM-STALL`).
 Tested with a fake rtl_sdr that never sends data. **Fix (hardware):** a hung
 dongle needs a USB reset - unplug/replug it (or power-cycle the Pi), then
-restart the service. If `IQRECEIVER-STALL` lines keep appearing, suspect the
-dongle/cable/USB power. Also noticed: the kernel DVB driver
-(`dvb_usb_rtl28xxu`) is not blacklisted (librtlsdr detaches it on open);
-blacklisting it is a possible hardening step.
+restart the service (11-20: `usbreset 0bda:2838` with the service stopped
+worked - streaming at ~500 KB/s again). If `IQRECEIVER-STALL` lines keep
+appearing, suspect the dongle/cable/USB power. **Kernel DVB driver
+blacklisted 2026-11-20** (Kevin ran it): `/etc/modprobe.d/blacklist-rtlsdr.conf`
+= dvb_usb_rtl28xxu, rtl2832_sdr, rtl2832, rtl2830, r820t; modules unloaded
+live (dmesg "deregistering interface driver dvb_usb_rtl28xxu"), radio kept
+scanning. Only the generic `dvb_core` stays loaded (harmless). If the OS is ever
+reinstalled, recreate this file.
 
 ## Open issues / backlog
 
